@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- AAOS 전용 앱 (Android Auto 프로젝션 앱 아님) -->
+    <uses-feature
+        android:name="android.hardware.type.automotive"
+        android:required="true" />
+    <uses-feature
+        android:name="android.hardware.wifi"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.screen.portrait"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.screen.landscape"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.camera"
+        android:required="false" />
+
+    <!--
+        NaviHelper SDK 퍼미션
+        https://document.pleos.ai/docs/pleos-only/connect-sdk-pleos/NaviHelper/declaring-permissions
+        NAVI_ROUTE        : get*Info(), requestTrip()
+        NAVI_ROUTE_SEARCH : requestRoute(), requestRouteWithWaypoints(), cancelRoute(), addWaypoint() 등
+        NAVI_CUSTOM_MAP   : requestNavigationScreen()
+    -->
+    <uses-permission android:name="pleos.car.permission.NAVI_ROUTE" />
+    <uses-permission android:name="pleos.car.permission.NAVI_ROUTE_SEARCH" />
+    <uses-permission android:name="pleos.car.permission.NAVI_CUSTOM_MAP" />
+
+    <!-- 지도 타일(지도 SDK PoC), 추후 서버 API -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- 픽업 알림(내비 위 팝업 대안) PoC -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <application
+        android:name=".PairCarApplication"
+        android:allowBackup="false"
+        android:icon="@drawable/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@drawable/ic_launcher"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.PairCar">
+
+        <!-- 차량 시스템이 제공하는 Car API. 일반 기기에서도 설치되도록 required=false -->
+        <uses-library
+            android:name="android.car"
+            android:required="false" />
+
+        <!--
+            screenOrientation 미지정 = Pleos에서 portrait(앱 영역 1개 window)로 실행되어
+            내비게이션과 나란히 표시된다.
+            https://document.pleos.ai/docs/pleos-only/vehicle-app-planning-guide/app-structure-screen-model
+            window 크기 변경 시 Activity 재생성 없이 Compose가 재배치하도록 configChanges 를 처리한다.
+            singleTask: Pleos GNB 아이콘으로 다시 열 때 새 인스턴스가 쌓이지 않도록 한다(에뮬레이터에서 확인).
+        -->
+        <activity
+            android:name=".MainActivity"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|density|uiMode|keyboard|keyboardHidden|navigation"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:resizeableActivity="true"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!--
+                AAOS 표준 Distraction Optimization 선언. 주행 중에도 간소화 화면을 표시하기 위함.
+                DO 앱도 CarUxRestrictions 에 따라 기능별 제한을 직접 적용해야 한다(DrivingPolicy).
+                Pleos 문서에는 DO 선언 방식이 명시되어 있지 않아 심사 시 확인 필요.
+            -->
+            <meta-data
+                android:name="distractionOptimized"
+                android:value="true" />
+        </activity>
+    </application>
+</manifest>

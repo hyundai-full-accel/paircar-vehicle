@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>페어카 Pleos 화면 시안</title>
+<style>
+  @page { size: A4 landscape; margin: 11mm 13mm; }
+  :root { --ink:#16181D; --muted:#5F6670; --line:#D5D9DF; --bg:#F2F3F5; --blue:#2F6BFF; --ok:#15803D; --no:#DC2626; --warn:#B45309; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family:"Malgun Gothic","Apple SD Gothic Neo","Noto Sans KR",sans-serif; color:var(--ink); font-size:10.5pt; line-height:1.5; }
+  section { page-break-after: always; min-height: 186mm; position: relative; }
+  section:last-child { page-break-after: auto; }
+  h1 { font-size:26pt; margin:0 0 4mm; letter-spacing:-0.5px; }
+  h2 { font-size:17pt; margin:0 0 1.5mm; letter-spacing:-0.3px; }
+  .kicker { color:var(--blue); font-weight:700; font-size:10pt; letter-spacing:0.5px; margin-bottom:1mm; }
+  .lead { color:var(--muted); margin:0 0 4mm; font-size:10.5pt; }
+  .meta { color:var(--muted); font-size:9pt; }
+  .pageno { position:absolute; right:0; bottom:0; color:var(--muted); font-size:8.5pt; }
+  figure { margin:0; }
+  figure img { width:100%; display:block; border:1px solid var(--line); border-radius:2mm; }
+  figcaption { font-size:9pt; color:var(--muted); margin-top:1.5mm; }
+  figcaption b { color:var(--ink); }
+  .row { display:flex; gap:6mm; }
+  .row > * { flex:1; min-width:0; }
+  .tag { display:inline-block; padding:0.4mm 2.4mm; border-radius:10mm; font-size:8.5pt; font-weight:700; color:#fff; vertical-align:middle; }
+  .ok { background:var(--ok); } .no { background:var(--no); } .warn { background:var(--warn); } .blue { background:var(--blue); }
+  table { width:100%; border-collapse:collapse; font-size:9.5pt; }
+  th, td { border-bottom:1px solid var(--line); padding:2mm 2.5mm; text-align:left; vertical-align:top; }
+  th { color:var(--muted); font-weight:600; background:var(--bg); }
+  .note { background:var(--bg); border-radius:2mm; padding:3mm 4mm; font-size:9.5pt; }
+  .note b { color:var(--ink); }
+  ul { margin:1mm 0; padding-left:5mm; } li { margin:0.6mm 0; }
+  .big-answer { display:flex; gap:5mm; margin:6mm 0; }
+  .big-answer > div { flex:1; border:1px solid var(--line); border-radius:3mm; padding:5mm; }
+  .big-answer .q { color:var(--muted); font-size:9.5pt; }
+  .big-answer .a { font-size:20pt; font-weight:800; margin:1mm 0; }
+  /* 화면 영역 다이어그램 */
+  .screen { display:flex; height:48mm; border:2px solid var(--ink); border-radius:3mm; overflow:hidden; font-size:10pt; }
+  .screen > div { display:flex; flex-direction:column; justify-content:center; align-items:center; text-align:center; padding:3mm; border-right:1px dashed var(--muted); }
+  .screen > div:last-child { border-right:none; }
+  .dv { flex:0 0 33%; background:#E8EAEE; }
+  .win { flex:1; }
+  .win.navi { background:#EAF0FF; } .win.app { background:#FFFFFF; }
+  .screen .t { font-weight:800; font-size:12pt; }
+  .screen .s { color:var(--muted); font-size:8.5pt; }
+  .tight figure img { max-height:120mm; object-fit:contain; }
+  .hero figure img { width:100%; max-height:146mm; object-fit:contain; }
+</style>
+</head>
+<body>
+
+<!-- 1. 표지 + 결론 -->
+<section>
+  <div class="kicker">PAIRCAR · PLEOS CONNECT</div>
+  <h1>페어카 화면 시안: 분할 화면 구성</h1>
+  <p class="lead">Pleos Connect Emulator에서 실제로 실행해 캡처한 화면입니다. 와이어프레임(Lo-Fi 1차)의 V-02 오늘의 카풀과 V-06 주행 중 현황을 기준으로 만들었습니다.</p>
+
+  <div class="big-answer">
+    <div><div class="q">내비 화면 <b>위에</b> 페어카 화면(팝업)을 띄울 수 있나?</div><div class="a" style="color:var(--no)">안 됨</div><div class="meta">오버레이 API·권한 설정 화면 모두 없음</div></div>
+    <div><div class="q">내비와 페어카를 <b>나란히</b> 띄울 수 있나?</div><div class="a" style="color:var(--ok)">됨 (확인)</div><div class="meta">Pleos 분할 화면: 앱 영역 최대 2개</div></div>
+    <div><div class="q">페어카 앱 안에 <b>지도</b>를 그릴 수 있나?</div><div class="a" style="color:var(--ok)">됨 (자체 지도)</div><div class="meta">Pleos 내비 지도 자체는 넣을 수 없음</div></div>
+  </div>
+
+  <table>
+    <tr><th style="width:24%">항목</th><th style="width:12%">결과</th><th>근거 (에뮬레이터 확인)</th></tr>
+    <tr><td>내비 위 팝업 / 오버레이</td><td><span class="tag no">불가</span></td><td>NaviHelper 22개 API 중 오버레이 기능 없음. "다른 앱 위에 표시" 설정 화면 없음. Driving view는 "앱이 가릴 수 없다"고 문서에 명시</td></tr>
+    <tr><td>Heads-up 알림 배너</td><td><span class="tag no">미표시</span></td><td>알림 센터에는 들어가지만 배너는 시스템 앱만 표시되는 것으로 보임 (공식 문서 없음)</td></tr>
+    <tr><td>내비 + 페어카 분할 화면</td><td><span class="tag ok">가능</span></td><td>window bar(⋮)를 끌면 [Driving view | 내비 | 페어카]. 주행 중(기어 D)에도 유지</td></tr>
+    <tr><td>앱 안 자체 지도</td><td><span class="tag ok">가능</span></td><td>MapLibre 지도 SDK. 경로선·마커·색 커스텀. Google 지도는 Play 서비스가 없어 불가</td></tr>
+    <tr><td>내비 실시간 정보 표시</td><td><span class="tag ok">가능</span></td><td>남은 거리(m)·시간(초)·현재 위치를 NaviHelper에서 받아 카드로 표시 (내비 화면 값과 일치)</td></tr>
+    <tr><td>앱이 분할을 직접 요청</td><td><span class="tag warn">불가</span></td><td>API 없음. 사용자가 window bar / 3손가락 제스처로 조작</td></tr>
+  </table>
+  <p class="meta" style="margin-top:4mm">검증 환경: Pleos Connect Emulator v2.1.0 (API 34, 2560×1440) · NaviHelper SDK 3.0.5 · 2026-10-29 · 시간 표시는 에뮬레이터 시계 기준(밤 11시대)이라 실제 출근 시간과 다름</p>
+  <div class="pageno">1</div>
+</section>
+
+<!-- 2. 화면 영역 구조 -->
+<section>
+  <div class="kicker">SCREEN MODEL</div>
+  <h2>Pleos 화면은 이렇게 나뉜다</h2>
+  <p class="lead">왼쪽 Driving view는 시스템이 고정으로 표시하고, 오른쪽 앱 영역에 앱 1개(넓게) 또는 2개(나란히)가 들어갑니다. 위에 겹쳐 띄우는 층은 앱에 열려 있지 않습니다.</p>
+
+  <div style="margin-bottom:3mm"><b>① 단독 (landscape)</b> <span class="meta">— 페어카가 앱 영역 전체를 사용</span></div>
+  <div class="screen">
+    <div class="dv"><div class="t">Driving view</div><div class="s">시스템 고정 영역<br>속도·기어·내비 TBT(“80m 좌회전”)</div></div>
+    <div class="win app"><div class="t">페어카</div><div class="s">앱 영역 전체 (약 1682 × 1210)<br>V-02 / V-06 2단 레이아웃</div></div>
+  </div>
+
+  <div style="margin:6mm 0 3mm"><b>② 분할 (권장)</b> <span class="meta">— 내비와 페어카가 나란히, 각각 약 841 × 1210</span></div>
+  <div class="screen">
+    <div class="dv"><div class="t">Driving view</div><div class="s">시스템 고정 영역</div></div>
+    <div class="win app"><div class="t">페어카</div><div class="s">다음 경유지·남은 거리·도착<br>1단 레이아웃</div></div>
+    <div class="win navi"><div class="t">Pleos 내비</div><div class="s">실제 길 안내<br>(경로는 페어카가 NaviHelper로 설정)</div></div>
+  </div>
+
+  <div class="note" style="margin-top:6mm">
+    <b>③ 내비 위 팝업은 없음</b> — 앱이 내비를 부르면(카풀 시작·내비 보기) 단독 상태에서는 내비가 페어카 자리를 <b>덮고</b>, 분할 상태에서는 <b>옆 창</b>에서 열립니다. 그래서 주행 중 화면은 분할 구성을 권장합니다. 분할 진입과 좌우 위치는 사용자가 window bar로 정합니다.
+  </div>
+  <div class="pageno">2</div>
+</section>
+
+<!-- 3. 시안 B: 분할 (권장) - 주행 -->
+<section class="hero">
+  <div class="kicker">MOCKUP B · 권장 · 정차 중</div>
+  <h2>분할 화면: [Driving view | 페어카 V-06 주행 현황 | Pleos 내비]</h2>
+  <p class="lead">페어카 카드의 “3.1km 남음 · 8분”과 오른쪽 내비의 “8분 · 3.1km 판교역 1번 출구”가 같은 값입니다 (NaviHelper 실시간 수신).</p>
+  <figure><img src="screenshots/24_split_navi_v06.png"><figcaption><b>정차 중</b> — 다음 경유지 카드, 경로 지도, 경유 진행 표시, 도착 시각 | 남은 거리, [탑승 완료] 버튼</figcaption></figure>
+  <div class="pageno">3</div>
+</section>
+
+<section class="hero">
+  <div class="kicker">MOCKUP B · 권장 · 주행 중</div>
+  <h2>주행 중 (기어 D): 같은 분할 화면이 유지된다</h2>
+  <p class="lead">CarUxRestrictions가 주행 중으로 바뀌면 상단에 “주행 중”이 표시되고, 탑승 확인처럼 정차 중에만 할 조작은 막힙니다. 왼쪽 Driving view도 주행 모드로 바뀝니다.</p>
+  <figure><img src="screenshots/25_split_navi_v06_driving.png"><figcaption><b>주행 중</b> — 탑승 버튼 대신 “정차 후 탑승을 확인하세요”. 주행 중 조작은 [내비 보기] 하나</figcaption></figure>
+  <div class="pageno">4</div>
+</section>
+
+<!-- 4. 시안 B: 분할 - 홈 -->
+<section class="tight">
+  <div class="kicker">MOCKUP B · 권장</div>
+  <h2>분할 화면: 페어카(V-02 오늘의 카풀) + Pleos 내비</h2>
+  <p class="lead">좁은 창에서는 같은 화면이 1단으로 자동 배치됩니다(카드 → 경로 미리보기 → 동승자). 화면 크기가 바뀌어도 앱을 다시 시작하지 않습니다.</p>
+  <div class="row">
+    <figure style="flex:1.25"><img src="screenshots/26_split_v02_home.png"><figcaption><b>정차 중 홈</b> — 출발 시각, 정류장 타임라인, 예상 거리·시간, 경로 미리보기, [주행 현황]</figcaption></figure>
+    <div class="note" style="flex:0.75; align-self:flex-start">
+      <b>이 화면에 쓰인 데이터</b>
+      <ul>
+        <li>일정·동승자: Mock 데이터 (서버 API 확정 후 교체)</li>
+        <li>예상 거리·시간, 경로선: 길찾기 미리보기 (프로토타입은 OSRM 데모 서버)</li>
+        <li>내비 연결 상태: NaviHelper</li>
+        <li>정차/주행: CarUxRestrictions</li>
+      </ul>
+      <b>탭 구성</b>
+      <ul>
+        <li>오늘의 카풀 · 내 크루(매칭) · 운행 기록(상세)</li>
+        <li>정산 정보는 이번 MVP 제외 → “다음 단계” 안내</li>
+      </ul>
+    </div>
+  </div>
+  <div class="pageno">5</div>
+</section>
+
+<!-- 5. 시안 A: 단독 -->
+<section class="tight">
+  <div class="kicker">MOCKUP A · 단독 화면</div>
+  <h2>단독(landscape): 와이어프레임 V-02 / V-06에 가장 가까운 형태</h2>
+  <p class="lead">페어카가 앱 영역 전체를 쓰면 와이어프레임처럼 2단 구성과 큰 지도가 가능합니다. 다만 주행 중에 내비를 보려면 화면을 전환해야 합니다.</p>
+  <div class="row">
+    <figure><img src="screenshots/21_v02_home_full.png"><figcaption><b>V-02 오늘의 카풀</b> — 07:40 출발 예정, 경유지 타임라인, 18.4km · 21분, 동승자, 경로 미리보기</figcaption></figure>
+    <figure><img src="screenshots/23_v06_driving_full.png"><figcaption><b>V-06 주행 중 현황</b> — “3.1km 남음”, 경유 진행 표시, 도착 시각 | 남은 거리, 내 차 위치(파란 점)</figcaption></figure>
+  </div>
+  <div class="pageno">6</div>
+</section>
+
+<!-- 6. 왜 팝업이 안 되나 -->
+<section class="tight">
+  <div class="kicker">WHY NOT OVERLAY</div>
+  <h2>내비 위 팝업이 안 되는 이유 (직접 확인)</h2>
+  <div class="row">
+    <figure><img src="screenshots/22_navi_after_start.png"><figcaption><b>단독 상태에서 [카풀 시작]</b> — 내비가 앱 영역 앞으로 나와 페어카를 덮음. 페어카를 내비 위에 다시 띄울 방법이 없음</figcaption></figure>
+    <div class="note" style="align-self:flex-start">
+      <b>확인한 내용</b>
+      <ul>
+        <li>NaviHelper SDK 메서드 22개 전부 호출 — 화면을 그리는 API 없음 (지도 View·팝업·오버레이 없음)</li>
+        <li><code>MANAGE_OVERLAY_PERMISSION</code> 설정 화면이 시스템에 없음 → “다른 앱 위에 표시” 권한을 줄 방법이 없음</li>
+        <li>공식 문서: “Driving view는 앱이 임의로 가리거나 종료할 수 없습니다”</li>
+        <li>중요도 높은 알림: 알림 센터에만 들어가고 Heads-up 배너는 미표시 (Pleos가 시스템·플랫폼 서명 앱만 허용하는 것으로 보임)</li>
+        <li>심사 기준: 권한 최소화, 보안 보호 기능 우회 금지 → 오버레이는 심사 리스크</li>
+      </ul>
+      <b>대신</b>
+      <ul>
+        <li>분할 화면으로 내비 옆에 상시 표시</li>
+        <li>Driving view에 내비 회전 안내가 항상 보임</li>
+        <li>픽업 도착 등 1회성 안내는 앱 화면 상태 변경 + 알림 센터 (추후 TTS 음성)</li>
+      </ul>
+    </div>
+  </div>
+  <div class="pageno">7</div>
+</section>
+
+<!-- 7. 와이어프레임 요소별 구현 근거 -->
+<section>
+  <div class="kicker">WIREFRAME MAPPING</div>
+  <h2>와이어프레임 요소 → 실제 데이터</h2>
+  <p class="lead">와이어프레임의 숫자·지도 요소가 어디서 오는지 정리했습니다.</p>
+  <table>
+    <tr><th style="width:30%">와이어프레임 요소</th><th style="width:12%">가능 여부</th><th>데이터 / 방법</th></tr>
+    <tr><td>V-06 왼쪽 속도 78km/h, “450m 좌회전”</td><td><span class="tag ok">이미 있음</span></td><td>Pleos Driving view (시스템 화면). 페어카가 만들 필요 없음</td></tr>
+    <tr><td>“403m 남음”, “경유지1 · 4분”</td><td><span class="tag ok">가능</span></td><td>NaviHelper <code>onWayPointInfo</code> — remainDistance(m), remainTime(초)</td></tr>
+    <tr><td>“도착 08:34 | 82.1km”</td><td><span class="tag ok">가능</span></td><td>NaviHelper <code>onDestinationInfo</code> / <code>onDrivingInfo</code></td></tr>
+    <tr><td>지도 + 출발·경유·도착 마커</td><td><span class="tag ok">가능</span></td><td>자체 지도 SDK (MapLibre) + 카풀 일정 좌표</td></tr>
+    <tr><td>지도 위 내 차 위치</td><td><span class="tag ok">가능</span></td><td>NaviHelper <code>getCurrentLocationInfo</code> (화면 표시 중 5초 간격)</td></tr>
+    <tr><td>지도 위 파란 경로선</td><td><span class="tag warn">조건부</span></td><td>NaviHelper는 경로 좌표를 주지 않음 → 별도 길찾기 API. Pleos 내비 경로와 다를 수 있음</td></tr>
+    <tr><td>회전 안내를 앱에서 직접 표시</td><td><span class="tag ok">가능</span></td><td>NaviHelper <code>getTBTInfo</code> (예: TURN_LEFT · 4m · 이름 없는 도로)</td></tr>
+    <tr><td>Pleos 내비 지도를 앱 안에 넣기</td><td><span class="tag no">불가</span></td><td>지도 View를 넘겨주는 API 없음</td></tr>
+    <tr><td>경유지 3곳 이상</td><td><span class="tag warn">제한</span></td><td>NaviHelper 경유지는 최대 2곳. 3명 이상이면 앞 픽업 후 경로 재설정</td></tr>
+  </table>
+  <div class="pageno">8</div>
+</section>
+
+<!-- 8. 남은 확인 -->
+<section>
+  <div class="kicker">NEXT</div>
+  <h2>남은 확인 사항</h2>
+  <table>
+    <tr><th style="width:34%">항목</th><th>이유 / 방법</th></tr>
+    <tr><td>주행 중 앱 자체 지도 허용 여부</td><td>지도 허용 예시는 Maps/Navigation 카테고리에만 있음. 페어카(Mobility Services 예상)은 Pleos 사전 문의 필요. 허용 안 되면 주행 중엔 숫자 카드만 표시</td></tr>
+    <tr><td>경유지·목적지 도착 이벤트</td><td>에뮬레이터는 차 속도만 바뀌고 내비 위치가 고정 → 실차/Devbox에서 확인</td></tr>
+    <tr><td>서드파티 Heads-up 알림</td><td>공식 문서 없음, 에뮬레이터에선 미표시 → Pleos 문의</td></tr>
+    <tr><td>상용 지도·길찾기 API 선정</td><td>프로토타입은 OpenFreeMap 타일 + OSRM 데모 서버(상용 불가). 서비스용 지도 사업자 API의 AAOS 동작·약관 확인</td></tr>
+    <tr><td>다른 화면 크기</td><td>Connect-W, 14.6 / 17인치 — Pleos 폼 팩터 테스트(가상 디스플레이)</td></tr>
+    <tr><td>distractionOptimized 선언 심사</td><td>주행 중 사용 선언(AAOS 표준). Pleos 문서에 방식 미기재 → App Market 사전 확인</td></tr>
+  </table>
+  <div class="note" style="margin-top:5mm">
+    <b>직접 실행해 보기</b> — Android Studio에서 Pleos Connect v2.1.0 에뮬레이터로 실행 → [카풀 시작] → 하단 GNB의 페어카 아이콘으로 복귀 → 화면 오른쪽 끝 <b>⋮</b>를 왼쪽으로 끌면 분할. 주행 상태는 <code>adb forward tcp:8088 tcp:8088</code> 후 <code>http://127.0.0.1:8088/</code> Virtual Console에서 기어 D/P.
+  </div>
+  <div class="pageno">9</div>
+</section>
+
+</body>
+</html>

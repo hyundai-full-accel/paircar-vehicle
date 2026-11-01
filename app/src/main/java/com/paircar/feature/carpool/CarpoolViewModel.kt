@@ -1,0 +1,169 @@
+package com.paircar.feature.carpool
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
+import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
+import com.paircar.PairCarApplication
+import com.paircar.core.model.GeoPoint
+import com.paircar.domain.repository.RoutePreview
+import com.paircar.domain.repository.RoutePreviewRepository
+import com.paircar.domain.model.BoardingStatus
+import com.paircar.domain.model.CarpoolAction
+import com.paircar.domain.model.CarpoolStatus
+import com.paircar.domain.model.CarpoolTrip
+import com.paircar.domain.model.DrivingPolicy
+import com.paircar.domain.model.DrivingState
+import com.paircar.domain.model.GuidanceState
+import com.paircar.domain.model.NaviCommandResult
+import com.paircar.domain.model.NaviConnectionState
+import com.paircar.domain.model.NaviError
+import com.paircar.domain.model.NaviProvider
+import com.paircar.domain.model.NaviScreen
+import com.paircar.domain.repository.CarpoolRepository
+import com.paircar.domain.repository.DrivingStateRepository
+import com.paircar.domain.repository.NaviRepository
+import com.paircar.domain.usecase.StartCarpoolGuidanceUseCase
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
+
+data class CarpoolUiState(
+    val trip: CarpoolTrip? = null,
+    val naviProvider: NaviProvider = NaviProvider.MOCK,
+    val naviConnection: NaviConnectionState = NaviConnectionState.Disconnected,
+    val guidance: GuidanceState = GuidanceState(),
+    val driving: DrivingState = DrivingState.Unavailable,
+    val message: String? = null,
+    val currentLocation: GeoPoint? = null,
+    val routePreview: RoutePreview? = null,
+) {
+    fun isAllowed(action: CarpoolAction) = DrivingPolicy.isAllowed(action, driving)
+}
+
+/** 홈 / 카풀 상세 / 주행 중 화면이 공유하는 카풀 세션 상태 */
+class CarpoolViewModel(
+    private val carpoolRepository: CarpoolRepository,
+    private val naviRepository: NaviRepository,
+    private val drivingStateRepository: DrivingStateRepository,
+    private val startCarpoolGuidance: StartCarpoolGuidanceUseCase,
+    private val routePreviewRepository: RoutePreviewRepository,
+) : ViewModel() {
+
+    private val message = MutableStateFlow<String?>(null)
+    private val routePreview = MutableStateFlow<RoutePreview?>(null)
+
+    val uiState: StateFlow<CarpoolUiState> = combine(
+        combine(
+            carpoolRepository.todayTrip,
+            naviRepository.connectionState,
+            naviRepository.guidanceState,
+            drivingStateRepository.state,
+            message,
+        ) { trip, connection, guidance, driving, msg ->
+            CarpoolUiState(trip, naviRepository.provider, connection, guidance, driving, msg)
+        },
+        naviRepository.currentLocation,
+        routePreview,
+    ) { state, location, preview ->
+        state.copy(currentLocation = location, routePreview = preview)
+    }.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5_000),
+        CarpoolUiState(trip = carpoolRepository.todayTrip.value, naviProvider = naviRepository.provider),
+    )
+
+    init {
+        // 출발지 → 수락된 동승자 픽업(시간순) → 목적지. 정류장이 바뀔 때만 다시 구한다.
+        viewModelScope.launch {
+            carpoolRepository.todayTrip
+                .map { trip -> trip?.let { it.planStops() } }
+                .distinctUntilChanged()
+                .collectLatest { stops ->
+                    routePreview.value = stops?.let { routePreviewRepository.preview(it) }
+                }
+        }
+    }
+
+    /** 내비 남은 거리/시간·현재 위치를 다시 요청한다 (주행 화면이 보이는 동안 주기적으로 호출). */
+    fun refreshNavi() {
+        naviRepository.refreshRouteState()
+    }
+
+    /** 남은 픽업 지점을 경유지로 내비 경로를 요청하고, 성공하면 운행 중으로 바꾼다. */
+    fun startGuidance(onRequested: () -> Unit = {}) {
+        val trip = carpoolRepository.todayTrip.value ?: return
+        if (!guard(CarpoolAction.START_GUIDANCE)) return
+        viewModelScope.launch {
+            when (val result = startCarpoolGuidance(trip)) {
+                NaviCommandResult.Requested -> onRequested()
+                is NaviCommandResult.Rejected -> message.value = result.toUserMessage()
+            }
+        }
+    }
+
+    fun openNavigation(screen: NaviScreen = NaviScreen.MAP) {
+        val result = naviRepository.showNavigationScreen(screen)
+        if (result is NaviCommandResult.Rejected) message.value = result.toUserMessage()
+    }
+
+    fun confirmBoarding(passengerId: String) = updateBoarding(passengerId, BoardingStatus.BOARDED)
+
+    fun markNoShow(passengerId: String) = updateBoarding(passengerId, BoardingStatus.NO_SHOW)
+
+    fun cancelCarpool() {
+        if (!guard(CarpoolAction.CANCEL_CARPOOL)) return
+        viewModelScope.launch {
+            naviRepository.cancelRoute()
+            carpoolRepository.updateTripStatus(CarpoolStatus.CANCELLED)
+        }
+    }
+
+    fun showMessage(text: String) {
+        message.value = text
+    }
+
+    fun dismissMessage() {
+        message.value = null
+    }
+
+    private fun updateBoarding(passengerId: String, status: BoardingStatus) {
+        if (!guard(CarpoolAction.CONFIRM_BOARDING)) return
+        viewModelScope.launch { carpoolRepository.updateBoardingStatus(passengerId, status) }
+    }
+
+    /** UI 에서 버튼을 숨기더라도 상태 전환 경합에 대비해 한 번 더 확인한다. */
+    private fun guard(action: CarpoolAction): Boolean {
+        val allowed = DrivingPolicy.isAllowed(action, drivingStateRepository.state.value)
+        if (!allowed) message.value = "정차 중에만 할 수 있어요"
+        return allowed
+    }
+
+    private fun NaviCommandResult.Rejected.toUserMessage(): String = when (error) {
+        NaviError.NOT_CONNECTED -> "차량 내비게이션에 연결할 수 없어요. 내비에서 목적지를 직접 설정해 주세요."
+        NaviError.PERMISSION_DENIED -> "내비 연동 권한이 없어요 ($message)"
+        else -> "내비 요청 실패: $message"
+    }
+
+    companion object {
+        val Factory = viewModelFactory {
+            initializer {
+                val container = (this[APPLICATION_KEY] as PairCarApplication).container
+                CarpoolViewModel(
+                    container.carpoolRepository,
+                    container.naviRepository,
+                    container.drivingStateRepository,
+                    container.startCarpoolGuidance,
+                    container.routePreviewRepository,
+                )
+            }
+        }
+    }
+}

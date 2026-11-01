@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">페어카</string>
+    <string name="notification_channel_pickup">픽업 알림</string>
+</resources>

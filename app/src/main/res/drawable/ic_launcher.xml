@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 페어카 앱 아이콘: 한 차에 탄 두 사람 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FF0E1116"
+        android:pathData="M54,4a50,50 0,1 1,0 100a50,50 0,1 1,0 -100z" />
+    <path
+        android:fillColor="#FF3DDC97"
+        android:pathData="M24,62 L30,44 Q32,38 38,38 L70,38 Q76,38 78,44 L84,62 L84,74 Q84,78 80,78 L28,78 Q24,78 24,74 Z" />
+    <path
+        android:fillColor="#FF0E1116"
+        android:pathData="M42,52a6,6 0,1 1,0 12a6,6 0,1 1,0 -12z M66,52a6,6 0,1 1,0 12a6,6 0,1 1,0 -12z" />
+</vector>
