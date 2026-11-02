@@ -19,6 +19,9 @@ android {
         // 내비 연동 구현 선택: "auto" | "pleos" | "mock"
         // auto = 차량(AAOS) 기기면 Pleos NaviHelper, 아니면 Mock
         buildConfigField("String", "NAVI_MODE", "\"auto\"")
+
+        // QR 초대가 여는 모바일웹 가입 주소. 서버 구축 전이라 예약 도메인(.example) 자리표시자.
+        buildConfigField("String", "INVITE_BASE_URL", "\"https://paircar.example/join\"")
     }
 
     // CarUxRestrictions(주행 규제 상태) 조회용 AAOS Car API. 런타임에는 차량 시스템이 제공한다.
@@ -54,6 +57,7 @@ dependencies {
 
     implementation(libs.pleos.navihelper)
     implementation(libs.maplibre.android)
+    implementation(libs.zxing.core)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)

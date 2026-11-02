@@ -12,7 +12,15 @@ interface CarpoolRemoteDataSource {
     suspend fun respondToRequest(tripId: String, passengerId: String, accept: Boolean)
     suspend fun updateBoarding(tripId: String, passengerId: String, status: String)
     suspend fun updateTripStatus(tripId: String, status: String)
+    /** QR 초대 코드 발급. 모바일웹이 같은 코드로 가입을 확인한다. */
+    suspend fun createCrewInvite(crewId: String): CrewInviteDto
 }
+
+data class CrewInviteDto(
+    val code: String,
+    val url: String,
+    val expiresAt: String,
+)
 
 /** 서버 응답 형태 가안. 필드는 API 확정 시 교체한다. */
 data class CarpoolTripDto(

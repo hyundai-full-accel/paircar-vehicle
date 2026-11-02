@@ -3,17 +3,19 @@ package com.paircar
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -28,45 +30,50 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.paircar.core.navigation.Screen
-import com.paircar.core.ui.components.StatusBadge
+import com.paircar.core.ui.components.BackIcon
+import com.paircar.core.ui.components.CheckBadgeIcon
+import com.paircar.core.ui.components.GearIcon
 import com.paircar.core.ui.components.TouchTargetHeight
 import com.paircar.core.ui.theme.DsColors
 import com.paircar.domain.model.DrivingPolicy
-import com.paircar.domain.model.DrivingState
-import com.paircar.domain.model.NaviConnectionState
-import com.paircar.domain.model.NaviProvider
 import com.paircar.domain.model.NaviScreen
 import com.paircar.feature.carpool.CarpoolDetailScreen
 import com.paircar.feature.carpool.CarpoolViewModel
+import com.paircar.feature.crew.CrewScreen
+import com.paircar.feature.crew.CrewViewModel
 import com.paircar.feature.driving.DrivingScreen
 import com.paircar.feature.home.HomeScreen
 import com.paircar.feature.matching.MatchingScreen
 import com.paircar.feature.matching.MatchingViewModel
 import com.paircar.feature.navipoc.NaviPocScreen
 import com.paircar.feature.navipoc.NaviPocViewModel
+import com.paircar.feature.settings.SettingsScreen
+import com.paircar.feature.settings.SettingsViewModel
 
 private val BackStackSaver = listSaver<List<Screen>, String>(
     save = { stack -> stack.map { it.name } },
     restore = { names -> names.map(Screen::valueOf) },
 )
 
-/** 와이어프레임 상단 탭. 정산은 이번 MVP 제외 기능 */
+/** 확정 시안의 상단 탭. 월별 정산은 이번 MVP 제외 기능 */
 private enum class Tab(val label: String, val screen: Screen?) {
     TODAY("오늘의 카풀", Screen.HOME),
-    CREW("내 크루", Screen.MATCHING),
+    CREW("내 크루", Screen.CREW),
     HISTORY("운행 기록", Screen.DETAIL),
-    SETTLEMENT("정산 정보", null),
+    SETTLEMENT("월별 정산", null),
 }
 
 private fun Screen.tab(): Tab? = when (this) {
     Screen.HOME, Screen.DRIVING -> Tab.TODAY
-    Screen.MATCHING -> Tab.CREW
+    Screen.CREW, Screen.MATCHING -> Tab.CREW
     Screen.DETAIL -> Tab.HISTORY
-    Screen.NAVI_POC -> null
+    Screen.SETTINGS, Screen.NAVI_POC -> null
 }
 
 /**
@@ -83,6 +90,7 @@ fun PairCarRoot() {
     val shown = if (DrivingPolicy.isAllowed(current.action, state.driving)) current else Screen.DRIVING
     val navigate: (Screen) -> Unit = { screen -> if (backStack.last() != screen) backStack = backStack + screen }
     val canGoBack = backStack.size > 1 && shown == current
+    val notReady: (String) -> Unit = carpoolViewModel::showMessage
 
     BackHandler(enabled = canGoBack) { backStack = backStack.dropLast(1) }
 
@@ -92,20 +100,19 @@ fun PairCarRoot() {
                 .fillMaxSize()
                 .safeDrawingPadding()
                 .padding(horizontal = 24.dp, vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
             TopBar(
                 selected = shown.tab(),
+                settingsSelected = shown == Screen.SETTINGS,
                 canGoBack = canGoBack,
                 onBack = { backStack = backStack.dropLast(1) },
+                onHome = { backStack = listOf(Screen.HOME) },
                 onSelectTab = { tab ->
                     val screen = tab.screen
-                    if (screen == null) carpoolViewModel.showMessage("정산은 다음 단계에서 제공돼요") else backStack = listOf(screen)
+                    if (screen == null) notReady("월별 정산은 다음 단계에서 제공돼요") else backStack = listOf(screen)
                 },
-                onOpenSettings = { navigate(Screen.NAVI_POC) },
-                naviProvider = state.naviProvider,
-                naviConnection = state.naviConnection,
-                driving = state.driving,
+                onOpenSettings = { navigate(Screen.SETTINGS) },
             )
             state.message?.let { MessageBanner(it, carpoolViewModel::dismissMessage) }
             Box(Modifier.weight(1f).fillMaxWidth()) {
@@ -114,8 +121,20 @@ fun PairCarRoot() {
                         state = state,
                         onStartCarpool = { carpoolViewModel.startGuidance { navigate(Screen.DRIVING) } },
                         onOpenDriving = { navigate(Screen.DRIVING) },
-                        onOpenMatching = { backStack = listOf(Screen.MATCHING) },
+                        onOpenMatching = { navigate(Screen.MATCHING) },
                     )
+                    Screen.CREW -> {
+                        val crewViewModel: CrewViewModel = viewModel(factory = CrewViewModel.Factory)
+                        val invite by crewViewModel.invite.collectAsStateWithLifecycle()
+                        CrewScreen(
+                            state = state,
+                            invite = invite,
+                            onOpenInvite = crewViewModel::ensureInvite,
+                            onRegenerateInvite = crewViewModel::createInvite,
+                            onOpenHistory = { backStack = listOf(Screen.DETAIL) },
+                            onNotReady = notReady,
+                        )
+                    }
                     Screen.MATCHING -> {
                         val matchingViewModel: MatchingViewModel = viewModel(factory = MatchingViewModel.Factory)
                         val matchingState by matchingViewModel.uiState.collectAsStateWithLifecycle()
@@ -136,6 +155,17 @@ fun PairCarRoot() {
                         onStartCarpool = { carpoolViewModel.startGuidance() },
                         onRefresh = carpoolViewModel::refreshNavi,
                     )
+                    Screen.SETTINGS -> {
+                        val settingsViewModel: SettingsViewModel = viewModel(factory = SettingsViewModel.Factory)
+                        val settingsState by settingsViewModel.uiState.collectAsStateWithLifecycle()
+                        SettingsScreen(
+                            state = settingsState,
+                            onRecheck = settingsViewModel::recheck,
+                            onDisconnect = settingsViewModel::disconnect,
+                            onOpenDiagnostics = { navigate(Screen.NAVI_POC) },
+                            onNotReady = notReady,
+                        )
+                    }
                     Screen.NAVI_POC -> {
                         val pocViewModel: NaviPocViewModel = viewModel(factory = NaviPocViewModel.Factory)
                         val pocState by pocViewModel.uiState.collectAsStateWithLifecycle()
@@ -147,77 +177,86 @@ fun PairCarRoot() {
     }
 }
 
+/** [로고/뒤로] [오늘의 카풀 | 내 크루 | 운행 기록 | 월별 정산] [설정] */
 @Composable
 private fun TopBar(
     selected: Tab?,
+    settingsSelected: Boolean,
     canGoBack: Boolean,
     onBack: () -> Unit,
+    onHome: () -> Unit,
     onSelectTab: (Tab) -> Unit,
     onOpenSettings: () -> Unit,
-    naviProvider: NaviProvider,
-    naviConnection: NaviConnectionState,
-    driving: DrivingState,
 ) {
     Row(
         Modifier
             .fillMaxWidth()
-            .heightIn(min = TouchTargetHeight),
+            .height(TouchTargetHeight),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        if (canGoBack) {
-            TextButton(onClick = onBack, modifier = Modifier.heightIn(min = TouchTargetHeight)) {
-                Text("‹", style = MaterialTheme.typography.headlineLarge)
-            }
+        SquareButton(onClick = if (canGoBack) onBack else onHome, selected = false) {
+            if (canGoBack) BackIcon(Modifier.size(36.dp)) else CheckBadgeIcon(Modifier.size(36.dp))
         }
         Row(
             Modifier
                 .weight(1f)
-                .horizontalScroll(rememberScrollState()),
+                .fillMaxHeight()
+                .clip(RoundedCornerShape(22.dp))
+                .background(DsColors.Segment)
+                .padding(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Row(
-                Modifier
-                    .clip(RoundedCornerShape(40.dp))
-                    .background(DsColors.SurfaceHigh)
-                    .padding(6.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                Tab.entries.forEach { tab ->
-                    val isSelected = tab == selected
+            Tab.entries.forEachIndexed { index, tab ->
+                val isSelected = tab == selected
+                // 선택된 탭 양옆에는 구분선을 그리지 않는다(시안)
+                val showDivider = index > 0 && !isSelected && Tab.entries[index - 1] != selected
+                if (index > 0) {
+                    Box(
+                        Modifier
+                            .width(1.dp)
+                            .height(28.dp)
+                            .background(if (showDivider) DsColors.Divider else DsColors.Segment),
+                    )
+                }
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .then(if (isSelected) Modifier.shadow(2.dp, RoundedCornerShape(18.dp)) else Modifier)
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(if (isSelected) DsColors.Surface else DsColors.Segment)
+                        .clickable { onSelectTab(tab) },
+                    contentAlignment = Alignment.Center,
+                ) {
                     Text(
                         tab.label,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = when {
-                            isSelected -> DsColors.OnSurface
-                            tab.screen == null -> DsColors.OnSurfaceMuted.copy(alpha = 0.6f)
-                            else -> DsColors.OnSurfaceMuted
-                        },
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(40.dp))
-                            .background(if (isSelected) DsColors.Surface else DsColors.SurfaceHigh)
-                            .clickable { onSelectTab(tab) }
-                            .padding(horizontal = 22.dp, vertical = 14.dp),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = if (tab.screen == null) DsColors.OnSurfaceMuted else DsColors.OnSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
             }
         }
-        val (naviText, naviColor) = when (naviConnection) {
-            is NaviConnectionState.Connected ->
-                (if (naviProvider == NaviProvider.MOCK) "내비 Mock" else "내비 연결") to DsColors.Positive
-            NaviConnectionState.Connecting -> "내비 연결 중" to DsColors.Info
-            NaviConnectionState.Disconnected -> "내비 미연결" to DsColors.OnSurfaceMuted
-            is NaviConnectionState.Failed -> "내비 연결 실패" to DsColors.Danger
+        SquareButton(onClick = onOpenSettings, selected = settingsSelected) {
+            GearIcon(Modifier.size(36.dp), hole = if (settingsSelected) DsColors.Segment else DsColors.Surface)
         }
-        StatusBadge(naviText, naviColor)
-        val drivingText = when {
-            driving.restricted && driving.source == DrivingState.Source.SIMULATED -> "주행(시뮬)"
-            driving.restricted -> "주행 중"
-            else -> "정차"
-        }
-        StatusBadge(drivingText, if (driving.restricted) DsColors.Warning else DsColors.OnSurfaceMuted)
-        TextButton(onClick = onOpenSettings, modifier = Modifier.heightIn(min = TouchTargetHeight)) {
-            Text("⚙", style = MaterialTheme.typography.headlineMedium, color = DsColors.OnSurfaceMuted)
-        }
+    }
+}
+
+@Composable
+private fun SquareButton(onClick: () -> Unit, selected: Boolean, icon: @Composable () -> Unit) {
+    Box(
+        Modifier
+            .size(TouchTargetHeight)
+            .shadow(if (selected) 0.dp else 2.dp, RoundedCornerShape(20.dp))
+            .clip(RoundedCornerShape(20.dp))
+            .background(if (selected) DsColors.Segment else DsColors.Surface)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        icon()
     }
 }
 

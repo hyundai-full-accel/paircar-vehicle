@@ -24,6 +24,7 @@ import com.paircar.core.ui.theme.DsColors
 import com.paircar.domain.model.BoardingStatus
 import com.paircar.domain.model.CarpoolStatus
 import com.paircar.domain.model.MatchStatus
+import com.paircar.domain.model.Passenger
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 
@@ -150,6 +151,10 @@ fun BoardingStatus.label(): Pair<String, Color> = when (this) {
     BoardingStatus.NO_SHOW -> "미탑승" to DsColors.Danger
     BoardingStatus.DROPPED_OFF -> "하차" to DsColors.OnSurfaceMuted
 }
+
+/** 오늘 불참이면 탑승 상태 대신 "불참" */
+fun Passenger.statusLabel(): Pair<String, Color> =
+    if (isAttending) boardingStatus.label() else "불참" to DsColors.OnSurfaceMuted
 
 /** 남은 시간(초)을 "약 N분"으로. 단위가 초라는 가정은 Pleos 에서 미검증. */
 fun formatRemainMinutes(seconds: Int?): String? =

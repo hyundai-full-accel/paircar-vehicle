@@ -13,6 +13,7 @@ import com.paircar.domain.model.BoardingStatus
 import com.paircar.domain.model.CarpoolAction
 import com.paircar.domain.model.CarpoolStatus
 import com.paircar.domain.model.CarpoolTrip
+import com.paircar.domain.model.Crew
 import com.paircar.domain.model.DrivingPolicy
 import com.paircar.domain.model.DrivingState
 import com.paircar.domain.model.GuidanceState
@@ -44,6 +45,9 @@ data class CarpoolUiState(
     val message: String? = null,
     val currentLocation: GeoPoint? = null,
     val routePreview: RoutePreview? = null,
+    /** 경유지 없이 바로 갈 때 (경로 상세의 비교용) */
+    val directPreview: RoutePreview? = null,
+    val crew: Crew? = null,
 ) {
     fun isAllowed(action: CarpoolAction) = DrivingPolicy.isAllowed(action, driving)
 }
@@ -59,6 +63,7 @@ class CarpoolViewModel(
 
     private val message = MutableStateFlow<String?>(null)
     private val routePreview = MutableStateFlow<RoutePreview?>(null)
+    private val directPreview = MutableStateFlow<RoutePreview?>(null)
 
     val uiState: StateFlow<CarpoolUiState> = combine(
         combine(
@@ -72,22 +77,33 @@ class CarpoolViewModel(
         },
         naviRepository.currentLocation,
         routePreview,
-    ) { state, location, preview ->
-        state.copy(currentLocation = location, routePreview = preview)
+        directPreview,
+        carpoolRepository.crew,
+    ) { state, location, preview, direct, crew ->
+        state.copy(currentLocation = location, routePreview = preview, directPreview = direct, crew = crew)
     }.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5_000),
-        CarpoolUiState(trip = carpoolRepository.todayTrip.value, naviProvider = naviRepository.provider),
+        CarpoolUiState(
+            trip = carpoolRepository.todayTrip.value,
+            naviProvider = naviRepository.provider,
+            crew = carpoolRepository.crew.value,
+        ),
     )
 
     init {
-        // 출발지 → 수락된 동승자 픽업(시간순) → 목적지. 정류장이 바뀔 때만 다시 구한다.
+        // 출발지 → 오늘 참석하는 동승자 픽업(시간순) → 목적지. 정류장이 바뀔 때만 다시 구한다.
+        previewWhenChanged(routePreview) { it.planStops() }
+        previewWhenChanged(directPreview) { it.directStops() }
+    }
+
+    private fun previewWhenChanged(target: MutableStateFlow<RoutePreview?>, stopsOf: (CarpoolTrip) -> List<GeoPoint>) {
         viewModelScope.launch {
             carpoolRepository.todayTrip
-                .map { trip -> trip?.let { it.planStops() } }
+                .map { trip -> trip?.let(stopsOf) }
                 .distinctUntilChanged()
                 .collectLatest { stops ->
-                    routePreview.value = stops?.let { routePreviewRepository.preview(it) }
+                    target.value = stops?.let { routePreviewRepository.preview(it) }
                 }
         }
     }

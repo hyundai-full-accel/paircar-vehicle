@@ -1,6 +1,5 @@
 package com.paircar
 
-import com.paircar.data.mock.MockCarpoolData
 import com.paircar.domain.model.BoardingStatus
 import com.paircar.domain.model.MatchStatus
 import com.paircar.domain.usecase.buildCarpoolRoutePlan
@@ -10,7 +9,7 @@ import org.junit.Test
 
 class CarpoolRoutePlanTest {
 
-    private val trip = MockCarpoolData.todayTrip()
+    private val trip = TestTrips.commute()
 
     @Test
     fun `accepted pickups become waypoints in pickup-time order`() {

@@ -1,0 +1,23 @@
+name: 작업
+description: 기능 개발·화면 수정·설정 등 작업 이슈. 열면 "이슈번호-영어제목" 브랜치가 자동으로 생겨요.
+body:
+  - type: input
+    id: branch
+    attributes:
+      label: 영어 제목 (브랜치 이름)
+      description: 영문으로 짧게. 예) Add QR invite → 12-add-qr-invite 브랜치
+      placeholder: Add QR invite
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: 작업 내용
+      placeholder: 무엇을, 왜 바꾸는지
+    validations:
+      required: true
+  - type: textarea
+    id: done
+    attributes:
+      label: 완료 조건
+      placeholder: "- [ ] 에뮬레이터에서 확인"

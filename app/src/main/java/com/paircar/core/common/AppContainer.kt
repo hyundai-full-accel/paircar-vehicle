@@ -1,6 +1,7 @@
 package com.paircar.core.common
 
 import android.content.Context
+import com.paircar.BuildConfig
 import com.paircar.core.notification.PickupNotifier
 import com.paircar.data.mock.MockCarpoolRepository
 import com.paircar.data.remote.OsrmRoutePreviewRepository
@@ -22,7 +23,7 @@ class AppContainer(context: Context) {
     val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     // 서버 API 확정 후 REST 구현으로 교체
-    val carpoolRepository: CarpoolRepository = MockCarpoolRepository()
+    val carpoolRepository: CarpoolRepository = MockCarpoolRepository(inviteBaseUrl = BuildConfig.INVITE_BASE_URL)
 
     val naviRepository: NaviRepository = NaviRepositoryFactory.create(context, applicationScope)
 

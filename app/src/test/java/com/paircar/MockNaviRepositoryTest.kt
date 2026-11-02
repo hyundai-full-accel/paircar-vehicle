@@ -1,6 +1,5 @@
 package com.paircar
 
-import com.paircar.data.mock.MockCarpoolData
 import com.paircar.domain.model.GuidanceStatus
 import com.paircar.domain.model.NaviCommandResult
 import com.paircar.domain.model.NaviConnectionState
@@ -21,7 +20,7 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class MockNaviRepositoryTest {
 
-    private val trip = MockCarpoolData.todayTrip()
+    private val trip = TestTrips.commute()
     private val request = RouteRequest(trip.destination, trip.acceptedPassengers.map { it.pickup })
 
     @Test

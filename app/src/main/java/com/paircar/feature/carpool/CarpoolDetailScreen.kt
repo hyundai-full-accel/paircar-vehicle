@@ -23,6 +23,7 @@ import com.paircar.core.ui.components.SecondaryActionButton
 import com.paircar.core.ui.components.StatusBadge
 import com.paircar.core.ui.components.hhmm
 import com.paircar.core.ui.components.label
+import com.paircar.core.ui.components.statusLabel
 import com.paircar.core.ui.theme.PairCarTheme
 import com.paircar.core.ui.theme.DsColors
 import com.paircar.data.mock.MockCarpoolData
@@ -59,7 +60,7 @@ fun CarpoolDetailScreen(
             DsCard(Modifier.fillMaxWidth()) {
                 Text("경로", style = MaterialTheme.typography.titleLarge)
                 InfoRow("출발 ${trip.departureTime.hhmm()}", trip.origin.name)
-                trip.acceptedPassengers.sortedBy { it.estimatedPickupTime }.forEach {
+                trip.pickupsInOrder.forEach {
                     InfoRow("경유 ${it.estimatedPickupTime.hhmm()}", "${it.pickup.name} (${it.name})")
                 }
                 InfoRow("도착 ${trip.estimatedArrivalTime.hhmm()}", trip.destination.name)
@@ -111,7 +112,7 @@ private fun PassengerDetail(
             Text(passenger.name, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
             val (match, matchColor) = passenger.matchStatus.label()
             StatusBadge(match, matchColor)
-            val (boarding, boardingColor) = passenger.boardingStatus.label()
+            val (boarding, boardingColor) = passenger.statusLabel()
             StatusBadge(boarding, boardingColor)
         }
         Text(

@@ -106,7 +106,8 @@ private fun TripCard(
             val preview = state.routePreview
             val suffix = if (preview?.isApproximate == true) " (추정)" else ""
             Metric("예상 거리", preview?.let { formatDistance(it.distanceMeters) + suffix } ?: "-")
-            Metric("소요 시간", preview?.let { formatDuration(it.durationSeconds) + suffix } ?: "-")
+            // 내 크루 화면과 같은 기준: 일정상 출발~도착 (경로 미리보기는 교통 미반영)
+            Metric("소요 시간", formatDuration(trip.scheduledDurationSeconds))
             Spacer(Modifier.weight(1f))
             when (trip.status) {
                 CarpoolStatus.SCHEDULED -> PrimaryActionButton("카풀 시작", onStartCarpool, Modifier.width(220.dp))
@@ -158,7 +159,7 @@ private fun Metric(label: String, value: String) {
 private fun PassengerCard(trip: CarpoolTrip, onOpenMatching: () -> Unit, modifier: Modifier) {
     DsCard(modifier) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("동승자 ${trip.acceptedPassengers.size}명", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+            Text("동승자 ${trip.pickupsInOrder.size}명", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
             if (trip.requestedPassengers.isNotEmpty()) {
                 TextButton(onClick = onOpenMatching) {
                     Text("새 요청 ${trip.requestedPassengers.size}건 ›", style = MaterialTheme.typography.labelMedium, color = DsColors.Brand)

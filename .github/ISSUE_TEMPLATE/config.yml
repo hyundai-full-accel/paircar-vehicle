@@ -1,0 +1,2 @@
+# 빈 이슈 대신 양식을 쓰게 해서 브랜치용 영어 제목을 항상 받는다.
+blank_issues_enabled: false

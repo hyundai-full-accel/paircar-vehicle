@@ -19,7 +19,7 @@ class CarpoolUseCasesTest {
 
     @Test
     fun `starting guidance without navi connection keeps trip scheduled`() = runTest {
-        val carpool = MockCarpoolRepository(latencyMillis = 0)
+        val carpool = MockCarpoolRepository(latencyMillis = 0, tripFactory = { TestTrips.commute() })
         val navi = MockNaviRepository(backgroundScope)
 
         val result = StartCarpoolGuidanceUseCase(carpool, navi)(carpool.todayTrip.value!!)
@@ -30,7 +30,7 @@ class CarpoolUseCasesTest {
 
     @Test
     fun `starting guidance marks trip in progress`() = runTest {
-        val carpool = MockCarpoolRepository(latencyMillis = 0)
+        val carpool = MockCarpoolRepository(latencyMillis = 0, tripFactory = { TestTrips.commute() })
         val navi = MockNaviRepository(backgroundScope, connectDelayMillis = 0)
         navi.connect()
         runCurrent()
@@ -43,7 +43,7 @@ class CarpoolUseCasesTest {
 
     @Test
     fun `navi arrival events update boarding and trip status`() = runTest {
-        val carpool = MockCarpoolRepository(latencyMillis = 0)
+        val carpool = MockCarpoolRepository(latencyMillis = 0, tripFactory = { TestTrips.commute() })
         carpool.updateTripStatus(CarpoolStatus.IN_PROGRESS)
         val apply = ApplyNaviEventUseCase(carpool)
 

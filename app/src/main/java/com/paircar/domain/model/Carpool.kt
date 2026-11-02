@@ -1,6 +1,7 @@
 package com.paircar.domain.model
 
 import com.paircar.core.model.GeoPoint
+import java.time.Duration
 import java.time.LocalDate
 import java.time.LocalTime
 
@@ -25,6 +26,9 @@ enum class BoardingStatus { WAITING, ARRIVED_AT_PICKUP, BOARDED, NO_SHOW, DROPPE
 
 enum class CarpoolStatus { SCHEDULED, IN_PROGRESS, COMPLETED, CANCELLED }
 
+/** 크루원이 오늘 운행에 참여하는지. 불참이면 경유지에서 뺀다. */
+enum class Attendance { ATTENDING, ABSENT }
+
 data class Passenger(
     val id: String,
     val name: String,
@@ -32,9 +36,13 @@ data class Passenger(
     val estimatedPickupTime: LocalTime,
     val matchStatus: MatchStatus,
     val boardingStatus: BoardingStatus = BoardingStatus.WAITING,
+    val attendance: Attendance = Attendance.ATTENDING,
 ) {
+    val isAttending: Boolean
+        get() = attendance == Attendance.ATTENDING
+
     val isPendingPickup: Boolean
-        get() = matchStatus == MatchStatus.ACCEPTED &&
+        get() = matchStatus == MatchStatus.ACCEPTED && isAttending &&
             (boardingStatus == BoardingStatus.WAITING || boardingStatus == BoardingStatus.ARRIVED_AT_PICKUP)
 }
 
@@ -66,11 +74,18 @@ data class CarpoolTrip(
     val boardedCount: Int
         get() = acceptedPassengers.count { it.boardingStatus == BoardingStatus.BOARDED }
 
-    /** 수락된 동승자를 픽업 시간순으로 */
+    /** 수락된 동승자 중 오늘 참석하는 사람을 픽업 시간순으로 (= 경유지) */
     val pickupsInOrder: List<Passenger>
-        get() = acceptedPassengers.sortedBy { it.estimatedPickupTime }
+        get() = acceptedPassengers.filter { it.isAttending }.sortedBy { it.estimatedPickupTime }
+
+    /** 일정상 출발~도착 시간. 경로 미리보기(교통 미반영)보다 이 값을 "총 소요 시간"으로 쓴다. */
+    val scheduledDurationSeconds: Int
+        get() = Duration.between(departureTime, estimatedArrivalTime).seconds.toInt()
 
     /** 지도 경로선용: 출발지 → 픽업 지점(시간순) → 목적지 */
     fun planStops(): List<GeoPoint> =
         listOf(origin.point) + pickupsInOrder.map { it.pickup.point } + destination.point
+
+    /** 경유지 없이 출발지 → 목적지 (경로 비교용) */
+    fun directStops(): List<GeoPoint> = listOf(origin.point, destination.point)
 }

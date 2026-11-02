@@ -1,0 +1,25 @@
+# 이슈가 열리면 "이슈번호-영어제목" 브랜치를 만들고 이슈에 체크아웃 방법을 댓글로 남긴다.
+name: Issue branch
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  create-branch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/scripts
+
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const { createIssueBranch } = require('./.github/scripts/issue-branch.js');
+            await createIssueBranch({ github, context, core });

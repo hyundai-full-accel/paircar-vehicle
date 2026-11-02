@@ -4,6 +4,8 @@ import com.paircar.core.model.GeoPoint
 import com.paircar.domain.model.BoardingStatus
 import com.paircar.domain.model.CarpoolStatus
 import com.paircar.domain.model.CarpoolTrip
+import com.paircar.domain.model.Crew
+import com.paircar.domain.model.CrewInvite
 import com.paircar.domain.model.DrivingState
 import com.paircar.domain.model.GuidanceState
 import com.paircar.domain.model.MatchStatus
@@ -19,14 +21,18 @@ import com.paircar.domain.model.WaypointSlot
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 
-/** 카풀 일정/매칭 데이터. 현재는 Mock, 이후 REST API 구현으로 교체한다. */
+/** 카풀 일정/매칭/크루 데이터. 현재는 Mock, 이후 REST API 구현으로 교체한다. */
 interface CarpoolRepository {
     val todayTrip: StateFlow<CarpoolTrip?>
+    val crew: StateFlow<Crew?>
 
     suspend fun refresh()
     suspend fun updateMatchStatus(passengerId: String, status: MatchStatus)
     suspend fun updateBoardingStatus(passengerId: String, status: BoardingStatus)
     suspend fun updateTripStatus(status: CarpoolStatus)
+
+    /** 크루 초대 QR 에 넣을 모바일웹 주소를 발급한다. */
+    suspend fun createInvite(): CrewInvite
 }
 
 /**
