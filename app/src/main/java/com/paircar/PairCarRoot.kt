@@ -97,6 +97,8 @@ fun PairCarRoot() {
     val notReady: (String) -> Unit = carpoolViewModel::showMessage
     // 앱을 켤 때 한 번, 오늘의 카풀 자리에 차량 연결 확인 화면을 먼저 보여준다
     var startupDone by rememberSaveable { mutableStateOf(false) }
+    // 연결 확인을 마치고 넘어오면 오늘의 카풀에서 주행 시작 카운트다운을 한다
+    var autoStartPending by rememberSaveable { mutableStateOf(false) }
 
     BackHandler(enabled = canGoBack) { backStack = backStack.dropLast(1) }
 
@@ -123,10 +125,15 @@ fun PairCarRoot() {
                     Screen.HOME -> if (!startupDone) {
                         val startupViewModel: StartupViewModel = viewModel(factory = StartupViewModel.Factory)
                         val startupState by startupViewModel.uiState.collectAsStateWithLifecycle()
-                        StartupScreen(startupState, onRetry = startupViewModel::start, onFinish = { startupDone = true })
+                        StartupScreen(startupState, onRetry = startupViewModel::start, onFinish = {
+                            startupDone = true
+                            autoStartPending = startupState.done
+                        })
                     } else {
                         HomeScreen(
                             state = state,
+                            autoStart = autoStartPending,
+                            onAutoStartHandled = { autoStartPending = false },
                             onStartCarpool = { carpoolViewModel.startGuidance { navigate(Screen.DRIVING) } },
                             onOpenDriving = { navigate(Screen.DRIVING) },
                             onOpenMatching = { navigate(Screen.MATCHING) },

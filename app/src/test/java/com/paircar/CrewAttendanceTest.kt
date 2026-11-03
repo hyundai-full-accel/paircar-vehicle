@@ -26,6 +26,19 @@ class CrewAttendanceTest {
     }
 
     @Test
+    fun `changed pickup is listed only for today's waypoints`() {
+        val changed = trip.changedPickups.single()
+        assertEquals("차수아", changed.name)
+        assertEquals("판교역 3번 출구", changed.previousPickup?.name)
+        assertEquals("판교역 2번 출구", changed.pickup.name)
+
+        val absentChanged = trip.copy(
+            passengers = trip.passengers.map { if (it.name == "차수아") it.copy(attendance = Attendance.ABSENT) else it },
+        )
+        assertEquals(emptyList<String>(), absentChanged.changedPickups.map { it.name })
+    }
+
+    @Test
     fun `scheduled duration is departure to arrival`() {
         // 07:10 → 08:34
         assertEquals(84 * 60, trip.scheduledDurationSeconds)
