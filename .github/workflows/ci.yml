@@ -27,7 +27,10 @@ jobs:
           distribution: temurin
           java-version: 25
 
-      - uses: android-actions/setup-android@v3
+      # v3 는 기본으로 'tools' 패키지를 설치하는데, 구글이 2026-09 에 배포를 중단해 실패한다
+      - uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
 
       # compileSdk 37 (android.car.jar 포함)
       - name: Install Android SDK packages

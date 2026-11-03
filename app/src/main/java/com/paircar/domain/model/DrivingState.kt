@@ -39,6 +39,7 @@ enum class CarpoolAction {
     VIEW_CREW,
     INVITE_CREW,
     VIEW_SETTINGS,
+    VIEW_SETTLEMENT,
 }
 
 object DrivingPolicy {

@@ -81,6 +81,7 @@ fun CrewScreen(
     onOpenInvite: () -> Unit,
     onRegenerateInvite: () -> Unit,
     onOpenHistory: () -> Unit,
+    onOpenSettlement: () -> Unit,
     onNotReady: (String) -> Unit,
 ) {
     val trip = state.trip
@@ -97,7 +98,7 @@ fun CrewScreen(
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val crewPanel: @Composable (Modifier) -> Unit = { modifier ->
-            CrewPanel(crew, trip, openInvite, onOpenHistory, onNotReady, modifier)
+            CrewPanel(crew, trip, openInvite, onOpenHistory, onOpenSettlement, onNotReady, modifier)
         }
         val routePanel: @Composable (Modifier, Boolean) -> Unit = { modifier, fillMap ->
             RoutePanel(state, trip, fillMap, { modal = CrewModal.ROUTE_DETAIL }, openInvite, modifier)
@@ -128,6 +129,7 @@ private fun CrewPanel(
     trip: CarpoolTrip,
     onInvite: () -> Unit,
     onOpenHistory: () -> Unit,
+    onOpenSettlement: () -> Unit,
     onNotReady: (String) -> Unit,
     modifier: Modifier,
 ) {
@@ -184,7 +186,7 @@ private fun CrewPanel(
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 ActionTile("크루 정보 수정", { onNotReady("크루 정보 수정은 다음 단계에서 제공돼요") }, Modifier.weight(1f))
                 ActionTile("운행 내역 상세", onOpenHistory, Modifier.weight(1f))
-                ActionTile("정산 기준 확인", { onNotReady("정산은 다음 단계에서 제공돼요") }, Modifier.weight(1f))
+                ActionTile("정산 기준 확인", onOpenSettlement, Modifier.weight(1f))
             }
             Column {
                 SectionHeader("크루 멤버") {

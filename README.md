@@ -205,7 +205,7 @@ implementation("ai.pleos.playground:NaviHelper:3.0.5")
 |---|---|
 | 주행 중 음성 명령 | Pleos SpeechToText SDK (`준비 중`, 신청 필요) |
 | TTS 안내 | Pleos TextToSpeech SDK. 픽업 도착 음성 안내 후보 |
-| 월별 정산 탭 / 운행별 정산 | 서버 API 확정 후 (탭은 "다음 단계" 안내만) |
+| 월별 정산 내역 / 운행별 정산 | 서버 API 확정 후 (지금 탭은 빈 내역 + 정산 기준만) |
 | QR 초대 서버·모바일웹 | 초대 코드 발급·검증 서버 구축 필요 (회의 2.4) |
 | 실제 결제 처리 | 차량 내 결제 정책 확인 필요 |
 | iOS 앱 (동승자용) | 별도 프로젝트 |

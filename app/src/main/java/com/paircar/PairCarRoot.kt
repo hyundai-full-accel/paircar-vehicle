@@ -53,6 +53,7 @@ import com.paircar.feature.matching.MatchingScreen
 import com.paircar.feature.matching.MatchingViewModel
 import com.paircar.feature.navipoc.NaviPocScreen
 import com.paircar.feature.navipoc.NaviPocViewModel
+import com.paircar.feature.settlement.SettlementScreen
 import com.paircar.feature.settings.SettingsScreen
 import com.paircar.feature.settings.SettingsViewModel
 
@@ -61,18 +62,19 @@ private val BackStackSaver = listSaver<List<Screen>, String>(
     restore = { names -> names.map(Screen::valueOf) },
 )
 
-/** 확정 시안의 상단 탭. 월별 정산은 이번 MVP 제외 기능 */
-private enum class Tab(val label: String, val screen: Screen?) {
+/** 확정 시안의 상단 탭 */
+private enum class Tab(val label: String, val screen: Screen) {
     TODAY("오늘의 카풀", Screen.HOME),
     CREW("내 크루", Screen.CREW),
     HISTORY("운행 기록", Screen.DETAIL),
-    SETTLEMENT("월별 정산", null),
+    SETTLEMENT("월별 정산", Screen.SETTLEMENT),
 }
 
 private fun Screen.tab(): Tab? = when (this) {
     Screen.HOME, Screen.DRIVING -> Tab.TODAY
     Screen.CREW, Screen.MATCHING -> Tab.CREW
     Screen.DETAIL -> Tab.HISTORY
+    Screen.SETTLEMENT -> Tab.SETTLEMENT
     Screen.SETTINGS, Screen.NAVI_POC -> null
 }
 
@@ -108,10 +110,7 @@ fun PairCarRoot() {
                 canGoBack = canGoBack,
                 onBack = { backStack = backStack.dropLast(1) },
                 onHome = { backStack = listOf(Screen.HOME) },
-                onSelectTab = { tab ->
-                    val screen = tab.screen
-                    if (screen == null) notReady("월별 정산은 다음 단계에서 제공돼요") else backStack = listOf(screen)
-                },
+                onSelectTab = { tab -> backStack = listOf(tab.screen) },
                 onOpenSettings = { navigate(Screen.SETTINGS) },
             )
             state.message?.let { MessageBanner(it, carpoolViewModel::dismissMessage) }
@@ -132,9 +131,11 @@ fun PairCarRoot() {
                             onOpenInvite = crewViewModel::ensureInvite,
                             onRegenerateInvite = crewViewModel::createInvite,
                             onOpenHistory = { backStack = listOf(Screen.DETAIL) },
+                            onOpenSettlement = { backStack = listOf(Screen.SETTLEMENT) },
                             onNotReady = notReady,
                         )
                     }
+                    Screen.SETTLEMENT -> SettlementScreen()
                     Screen.MATCHING -> {
                         val matchingViewModel: MatchingViewModel = viewModel(factory = MatchingViewModel.Factory)
                         val matchingState by matchingViewModel.uiState.collectAsStateWithLifecycle()
@@ -232,7 +233,7 @@ private fun TopBar(
                     Text(
                         tab.label,
                         style = MaterialTheme.typography.titleMedium,
-                        color = if (tab.screen == null) DsColors.OnSurfaceMuted else DsColors.OnSurface,
+                        color = DsColors.OnSurface,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
