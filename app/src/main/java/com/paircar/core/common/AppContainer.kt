@@ -34,6 +34,8 @@ class AppContainer(context: Context) {
 
     val pickupNotifier = PickupNotifier(context)
 
+    val vehicleCheckStore: VehicleCheckStore = PrefsVehicleCheckStore(context)
+
     val startCarpoolGuidance = StartCarpoolGuidanceUseCase(carpoolRepository, naviRepository)
 
     val applyNaviEvent = ApplyNaviEventUseCase(carpoolRepository)

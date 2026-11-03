@@ -101,3 +101,28 @@ fun PlusIcon(modifier: Modifier, color: Color = Color.White) {
         drawLine(color, Offset(a, center.y), Offset(b, center.y), stroke, StrokeCap.Round)
     }
 }
+
+/** ✓ 테두리 없는 체크 */
+@Composable
+fun CheckIcon(modifier: Modifier, color: Color = DsColors.OnSurface) {
+    Canvas(modifier) {
+        val path = Path().apply {
+            moveTo(size.width * 0.18f, size.height * 0.52f)
+            lineTo(size.width * 0.42f, size.height * 0.74f)
+            lineTo(size.width * 0.84f, size.height * 0.3f)
+        }
+        drawPath(path, color, style = Stroke(size.minDimension * 0.1f, cap = StrokeCap.Round, join = StrokeJoin.Round))
+    }
+}
+
+/** ⓘ 안내 */
+@Composable
+fun InfoIcon(modifier: Modifier, color: Color = DsColors.OnSurfaceMuted) {
+    Canvas(modifier) {
+        val r = size.minDimension / 2
+        val stroke = r * 0.14f
+        drawCircle(color, r - stroke / 2, style = Stroke(stroke))
+        drawCircle(color, r * 0.1f, Offset(center.x, center.y - r * 0.42f))
+        drawLine(color, Offset(center.x, center.y - r * 0.12f), Offset(center.x, center.y + r * 0.48f), stroke, StrokeCap.Round)
+    }
+}

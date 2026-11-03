@@ -56,6 +56,8 @@ import com.paircar.feature.navipoc.NaviPocViewModel
 import com.paircar.feature.settlement.SettlementScreen
 import com.paircar.feature.settings.SettingsScreen
 import com.paircar.feature.settings.SettingsViewModel
+import com.paircar.feature.startup.StartupScreen
+import com.paircar.feature.startup.StartupViewModel
 
 private val BackStackSaver = listSaver<List<Screen>, String>(
     save = { stack -> stack.map { it.name } },
@@ -93,6 +95,8 @@ fun PairCarRoot() {
     val navigate: (Screen) -> Unit = { screen -> if (backStack.last() != screen) backStack = backStack + screen }
     val canGoBack = backStack.size > 1 && shown == current
     val notReady: (String) -> Unit = carpoolViewModel::showMessage
+    // 앱을 켤 때 한 번, 오늘의 카풀 자리에 차량 연결 확인 화면을 먼저 보여준다
+    var startupDone by rememberSaveable { mutableStateOf(false) }
 
     BackHandler(enabled = canGoBack) { backStack = backStack.dropLast(1) }
 
@@ -116,12 +120,18 @@ fun PairCarRoot() {
             state.message?.let { MessageBanner(it, carpoolViewModel::dismissMessage) }
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 when (shown) {
-                    Screen.HOME -> HomeScreen(
-                        state = state,
-                        onStartCarpool = { carpoolViewModel.startGuidance { navigate(Screen.DRIVING) } },
-                        onOpenDriving = { navigate(Screen.DRIVING) },
-                        onOpenMatching = { navigate(Screen.MATCHING) },
-                    )
+                    Screen.HOME -> if (!startupDone) {
+                        val startupViewModel: StartupViewModel = viewModel(factory = StartupViewModel.Factory)
+                        val startupState by startupViewModel.uiState.collectAsStateWithLifecycle()
+                        StartupScreen(startupState, onRetry = startupViewModel::start, onFinish = { startupDone = true })
+                    } else {
+                        HomeScreen(
+                            state = state,
+                            onStartCarpool = { carpoolViewModel.startGuidance { navigate(Screen.DRIVING) } },
+                            onOpenDriving = { navigate(Screen.DRIVING) },
+                            onOpenMatching = { navigate(Screen.MATCHING) },
+                        )
+                    }
                     Screen.CREW -> {
                         val crewViewModel: CrewViewModel = viewModel(factory = CrewViewModel.Factory)
                         val invite by crewViewModel.invite.collectAsStateWithLifecycle()
