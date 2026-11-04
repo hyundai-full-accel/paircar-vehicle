@@ -4,11 +4,13 @@ import android.content.Context
 import com.paircar.BuildConfig
 import com.paircar.core.notification.PickupNotifier
 import com.paircar.data.mock.MockCarpoolRepository
+import com.paircar.data.mock.MockSettlementRepository
 import com.paircar.data.remote.OsrmRoutePreviewRepository
 import com.paircar.domain.repository.RoutePreviewRepository
 import com.paircar.domain.repository.CarpoolRepository
 import com.paircar.domain.repository.DrivingStateRepository
 import com.paircar.domain.repository.NaviRepository
+import com.paircar.domain.repository.SettlementRepository
 import com.paircar.domain.usecase.ApplyNaviEventUseCase
 import com.paircar.domain.usecase.StartCarpoolGuidanceUseCase
 import com.paircar.vehicle.navi.NaviRepositoryFactory
@@ -25,7 +27,10 @@ class AppContainer(context: Context) {
     // 서버 API 확정 후 REST 구현으로 교체
     val carpoolRepository: CarpoolRepository = MockCarpoolRepository(inviteBaseUrl = BuildConfig.INVITE_BASE_URL)
 
-    val naviRepository: NaviRepository = NaviRepositoryFactory.create(context, applicationScope)
+    // 정산 서버 확정 후 교체
+    val settlementRepository: SettlementRepository = MockSettlementRepository()
+
+    val naviRepository: NaviRepository =NaviRepositoryFactory.create(context, applicationScope)
 
     val drivingStateRepository: DrivingStateRepository = CarDrivingStateRepository(context)
 

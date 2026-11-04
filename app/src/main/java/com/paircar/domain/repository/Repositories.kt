@@ -9,6 +9,7 @@ import com.paircar.domain.model.CrewInvite
 import com.paircar.domain.model.DrivingState
 import com.paircar.domain.model.GuidanceState
 import com.paircar.domain.model.MatchStatus
+import com.paircar.domain.model.MonthlySettlement
 import com.paircar.domain.model.NaviCommandResult
 import com.paircar.domain.model.NaviConnectionState
 import com.paircar.domain.model.NaviDiagnosticCall
@@ -33,6 +34,12 @@ interface CarpoolRepository {
 
     /** 크루 초대 QR 에 넣을 모바일웹 주소를 발급한다. */
     suspend fun createInvite(): CrewInvite
+}
+
+/** 월별 정산 기록. 정산 서버 미구축이라 지금은 Mock 만 있다. */
+interface SettlementRepository {
+    /** 정산 내역이 있는 달, 최근 달이 먼저 */
+    val settlements: StateFlow<List<MonthlySettlement>>
 }
 
 /**

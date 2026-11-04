@@ -54,6 +54,7 @@ import com.paircar.feature.matching.MatchingViewModel
 import com.paircar.feature.navipoc.NaviPocScreen
 import com.paircar.feature.navipoc.NaviPocViewModel
 import com.paircar.feature.settlement.SettlementScreen
+import com.paircar.feature.settlement.SettlementViewModel
 import com.paircar.feature.settings.SettingsScreen
 import com.paircar.feature.settings.SettingsViewModel
 import com.paircar.feature.startup.StartupScreen
@@ -152,7 +153,16 @@ fun PairCarRoot() {
                             onNotReady = notReady,
                         )
                     }
-                    Screen.SETTLEMENT -> SettlementScreen()
+                    Screen.SETTLEMENT -> {
+                        val settlementViewModel: SettlementViewModel = viewModel(factory = SettlementViewModel.Factory)
+                        val settlementState by settlementViewModel.uiState.collectAsStateWithLifecycle()
+                        SettlementScreen(
+                            state = settlementState,
+                            onSelectMonth = settlementViewModel::selectMonth,
+                            onOpenHistory = { backStack = listOf(Screen.DETAIL) },
+                            onNotReady = notReady,
+                        )
+                    }
                     Screen.MATCHING -> {
                         val matchingViewModel: MatchingViewModel = viewModel(factory = MatchingViewModel.Factory)
                         val matchingState by matchingViewModel.uiState.collectAsStateWithLifecycle()
