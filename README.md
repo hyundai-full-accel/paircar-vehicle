@@ -50,9 +50,11 @@ app/src/main/java/com/paircar/
 │   ├── repository/            # CarpoolRepository, NaviRepository, DrivingStateRepository
 │   └── usecase/               # 경로 계획(경유지 ≤2), 안내 시작, 내비 이벤트 반영
 ├── feature/
+│   ├── startup/               # 시작 화면: 차량 연결·변경사항·경유지·지원 기능 확인 후 오늘의 카풀로
 │   ├── home/                  # 탭 1. 오늘의 카풀 (V-02)
 │   ├── crew/                  # 탭 2. 내 크루 + 경로 상세 + QR 초대
 │   ├── carpool/               # 탭 3. 운행 기록(카풀 상세) + 공유 CarpoolViewModel
+│   ├── settlement/            # 탭 4. 월별 정산 (서버 전까지 빈 내역 + 정산 기준)
 │   ├── matching/              # 새 동승 요청 수락/거절 (정차 중 전용)
 │   ├── driving/               # 주행 중 간소화 화면 (V-06, 재작업 예정)
 │   ├── settings/              # 설정 + 연결된 차량(내비 연결 재확인/해제)

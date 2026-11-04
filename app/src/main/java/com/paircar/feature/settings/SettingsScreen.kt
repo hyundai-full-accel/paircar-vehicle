@@ -167,7 +167,10 @@ private fun VehiclePanel(
 
 private val CheckedFormat = DateTimeFormatter.ofPattern("M월 d일 a h:mm", Locale.KOREAN)
 
-private fun SettingsUiState.connectionChip(): String = when (connection) {
+private fun SettingsUiState.connectionChip(): String = connectionChip(connection, provider)
+
+/** 연결된 차량 옆 상태 칩 (설정, 시작 화면) */
+internal fun connectionChip(connection: NaviConnectionState, provider: NaviProvider): String = when (connection) {
     is NaviConnectionState.Connected -> if (provider == NaviProvider.MOCK) "Mock 연결 •" else "연결됨 •"
     NaviConnectionState.Connecting -> "연결 중"
     NaviConnectionState.Disconnected -> "연결 안 됨"

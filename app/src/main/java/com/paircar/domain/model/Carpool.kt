@@ -37,6 +37,8 @@ data class Passenger(
     val matchStatus: MatchStatus,
     val boardingStatus: BoardingStatus = BoardingStatus.WAITING,
     val attendance: Attendance = Attendance.ATTENDING,
+    /** 픽업 장소가 바뀌었으면 바뀌기 전 장소 (경유지 변경 알림용) */
+    val previousPickup: Place? = null,
 ) {
     val isAttending: Boolean
         get() = attendance == Attendance.ATTENDING
@@ -77,6 +79,10 @@ data class CarpoolTrip(
     /** 수락된 동승자 중 오늘 참석하는 사람을 픽업 시간순으로 (= 경유지) */
     val pickupsInOrder: List<Passenger>
         get() = acceptedPassengers.filter { it.isAttending }.sortedBy { it.estimatedPickupTime }
+
+    /** 오늘 경유지 중 픽업 장소가 바뀐 동승자 */
+    val changedPickups: List<Passenger>
+        get() = pickupsInOrder.filter { it.previousPickup != null }
 
     /** 일정상 출발~도착 시간. 경로 미리보기(교통 미반영)보다 이 값을 "총 소요 시간"으로 쓴다. */
     val scheduledDurationSeconds: Int
