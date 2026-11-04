@@ -11,6 +11,8 @@ import com.paircar.domain.repository.CarpoolRepository
 import com.paircar.domain.repository.DrivingStateRepository
 import com.paircar.domain.repository.NaviRepository
 import com.paircar.domain.repository.SettlementRepository
+import com.paircar.domain.repository.VehicleEnergyRepository
+import com.paircar.vehicle.energy.PleosVehicleEnergyRepository
 import com.paircar.domain.usecase.ApplyNaviEventUseCase
 import com.paircar.domain.usecase.StartCarpoolGuidanceUseCase
 import com.paircar.vehicle.navi.NaviRepositoryFactory
@@ -32,7 +34,9 @@ class AppContainer(context: Context) {
 
     val naviRepository: NaviRepository =NaviRepositoryFactory.create(context, applicationScope)
 
-    val drivingStateRepository: DrivingStateRepository = CarDrivingStateRepository(context)
+    val vehicleEnergyRepository: VehicleEnergyRepository = PleosVehicleEnergyRepository.create(context)
+
+    val drivingStateRepository: DrivingStateRepository =CarDrivingStateRepository(context)
 
     // 앱 자체 지도의 경로선 미리보기 (프로토타입: OSRM 데모 서버)
     val routePreviewRepository: RoutePreviewRepository = OsrmRoutePreviewRepository()

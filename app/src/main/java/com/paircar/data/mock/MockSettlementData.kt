@@ -1,5 +1,6 @@
 package com.paircar.data.mock
 
+import com.paircar.domain.model.EfficiencySource
 import com.paircar.domain.model.MemberRides
 import com.paircar.domain.model.MonthlySettlement
 import com.paircar.domain.model.PaymentStatus
@@ -11,8 +12,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import java.time.YearMonth
 
 /**
- * 정산 서버 확정 전 화면 개발용 데이터 (확정 시안의 2026년 10월 정산).
- * 연비·유가는 운전자가 입력하는 값이라 차량(아이오닉 6)에서 읽은 값이 아니다.
+ * 정산 서버 확정 전 화면 개발용 데이터 (확정 시안의 2026년 10월 정산, 거리·횟수는 시안 값).
+ * 전비·충전 단가는 운전자 입력값 예시다. 차량이 전비를 주면 SettlementViewModel 이 차량 값으로 바꾼다.
  */
 object MockSettlementData {
 
@@ -23,7 +24,11 @@ object MockSettlementData {
         receiverAccount = null,
         carpoolDays = 18,
         sharedKm = 216.0,
-        policy = SettlementPolicy(fuelEfficiencyKmPerL = 13.2, fuelPricePerL = 1_684),
+        policy = SettlementPolicy(
+            efficiencyKmPerKwh = 5.5,
+            efficiencySource = EfficiencySource.MANUAL,
+            chargePricePerKwh = 347,
+        ),
         members = listOf(
             MemberRides(name = "차수아", rides = 18, sharedKm = 216.0, headcount = 2, detourKmPerRide = 3.0),
             // 10월에 함께 탔고 이미 입금한 동승자

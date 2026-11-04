@@ -3,16 +3,39 @@ package com.paircar.domain.model
 import java.time.YearMonth
 import kotlin.math.roundToLong
 
+/** 정산에 쓴 전비가 어디서 왔는지 */
+enum class EfficiencySource {
+    /** Vehicle SDK EvBattery.getCumulativeEvEfficiency */
+    VEHICLE_CUMULATIVE,
+
+    /** Vehicle SDK EvBattery.getSinceChargeEvEfficiency */
+    VEHICLE_SINCE_CHARGE,
+
+    /** 차량이 전비를 주지 않아 운전자가 [정산 정보 입력]에서 정한 값 */
+    MANUAL,
+}
+
 /**
- * 정산 기준. 차량에서 연비를 읽는 API 가 없으므로 운전자가 [정산 정보 입력]에서 정한 값을 쓴다.
- * - 연비 km/L, 기준 유가 원/L
+ * 정산 기준 (전기차).
+ * - 전비 km/kWh: 차량(Vehicle SDK)에서 읽거나, 못 읽으면 입력값
+ * - 충전 단가 원/kWh: 차량에서 나오지 않으므로 운전자가 입력한다
  * - 최종 금액은 [roundUpUnit] 원 단위로 올린다
  */
 data class SettlementPolicy(
-    val fuelEfficiencyKmPerL: Double,
-    val fuelPricePerL: Int,
+    val efficiencyKmPerKwh: Double,
+    val efficiencySource: EfficiencySource,
+    val chargePricePerKwh: Int,
     val roundUpUnit: Int = 100,
-)
+) {
+    /** 차량에서 읽은 전비가 있으면 그것으로 바꾼다. 없으면 그대로 둔다. */
+    fun withVehicle(energy: VehicleEnergy): SettlementPolicy = when {
+        energy.cumulativeEvEfficiency != null ->
+            copy(efficiencyKmPerKwh = energy.cumulativeEvEfficiency, efficiencySource = EfficiencySource.VEHICLE_CUMULATIVE)
+        energy.sinceChargeEvEfficiency != null ->
+            copy(efficiencyKmPerKwh = energy.sinceChargeEvEfficiency, efficiencySource = EfficiencySource.VEHICLE_SINCE_CHARGE)
+        else -> this
+    }
+}
 
 /** 동승자가 낸 돈의 상태 */
 enum class PaymentStatus { UNCONFIRMED, PAID }
@@ -47,10 +70,10 @@ data class SettlementReceipt(
     val detourKm: Double = member.detourKmPerRide * member.rides
     val burdenKm: Double = sharedShareKm + detourKm
 
-    /** 유류비는 원 단위 반올림 */
-    val fuelWon: Long = (burdenKm / policy.fuelEfficiencyKmPerL * policy.fuelPricePerL).roundToLong()
+    /** 충전비는 원 단위 반올림 */
+    val chargeWon: Long = (burdenKm / policy.efficiencyKmPerKwh * policy.chargePricePerKwh).roundToLong()
     val tollWon: Long = member.tollWon.toLong()
-    val subtotalWon: Long = fuelWon + tollWon
+    val subtotalWon: Long = chargeWon + tollWon
 
     /** 송금하기 쉽게 [SettlementPolicy.roundUpUnit] 원 단위로 올린다 */
     val totalWon: Long = ceilTo(subtotalWon, policy.roundUpUnit.toLong())

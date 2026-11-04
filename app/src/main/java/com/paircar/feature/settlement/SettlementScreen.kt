@@ -55,6 +55,7 @@ import com.paircar.core.ui.components.ScrollColumn
 import com.paircar.core.ui.components.SectionHeader
 import com.paircar.core.ui.components.TonalActionButton
 import com.paircar.core.ui.theme.DsColors
+import com.paircar.domain.model.EfficiencySource
 import com.paircar.domain.model.MonthlySettlement
 import com.paircar.domain.model.PaymentStatus
 import com.paircar.domain.model.SettlementReceipt
@@ -239,7 +240,7 @@ private fun SummaryCard(
             if (fillHeight) Spacer(Modifier.weight(1f))
             HorizontalDivider(Modifier.padding(top = 12.dp, bottom = 24.dp), color = DsColors.Divider)
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                ActionTile("정산 정보 입력", { onNotReady("연비·유가 입력은 다음 단계에서 제공돼요") }, Modifier.weight(1f))
+                ActionTile("정산 정보 입력", { onNotReady("전비·충전 단가 입력은 다음 단계에서 제공돼요") }, Modifier.weight(1f))
                 ActionTile("운행 내역", onOpenHistory, Modifier.weight(1f))
                 ActionTile("정산 기준 확인", onOpenPolicy, Modifier.weight(1f))
             }
@@ -332,7 +333,7 @@ private fun ReceiptPanel(
 ) {
     Panel(modifier) {
         SectionHeader("영수증 · 계좌")
-        AmountRow("유류비", "${receipt.fuelWon.won()}원")
+        AmountRow("충전비", "${receipt.chargeWon.won()}원")
         AmountRow("통행료", "${receipt.tollWon.won()}원")
         AmountRow("${settlement.policy.roundUpUnit}원 단위 올림", "+${receipt.roundingWon.won()}원")
         HorizontalDivider(color = DsColors.Divider)
@@ -374,7 +375,7 @@ private fun AmountRow(label: String, value: String) {
     }
 }
 
-/** 정산 영수증: 부담 거리 → 유류비 → 최종 부담액 계산 과정 */
+/** 정산 영수증: 부담 거리 → 충전비 → 최종 부담액 계산 과정 */
 @Composable
 private fun BoxScope.ReceiptModal(
     settlement: MonthlySettlement,
@@ -393,8 +394,11 @@ private fun BoxScope.ReceiptModal(
             "${"%.1f".format(member.detourKmPerRide)}km × ${member.rides}일 = ${receipt.detourKm.km()}km",
         )
         AmountRow("부담 거리", "${receipt.burdenKm.km()}km")
-        AmountRow("연비 / 기준 유가", "${policy.fuelEfficiencyKmPerL}km/L · ${policy.fuelPricePerL.toLong().won()}원/L")
-        AmountRow("유류비 산출", "${receipt.fuelWon.won()}원 (반올림 표기)")
+        AmountRow(
+            "전비(${policy.efficiencySource.label()}) / 충전 단가",
+            "${policy.efficiencyKmPerKwh.efficiency()}km/kWh · ${policy.chargePricePerKwh.toLong().won()}원/kWh",
+        )
+        AmountRow("충전비 산출", "${receipt.chargeWon.won()}원 (반올림 표기)")
         AmountRow("통행료 · 별도 배분", "${receipt.tollWon.won()}원")
         HorizontalDivider(color = DsColors.Divider)
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -417,17 +421,32 @@ private fun BoxScope.PolicyModal(settlement: MonthlySettlement, onClose: () -> U
     InScreenModal(onDismiss = onClose, maxWidth = 760.dp) {
         ModalTitle("정산 기준", onClose)
         PolicyLine("부담 거리", "함께 탄 거리를 운전자 포함 인원으로 나누고, 그 동승자를 태우느라 더 돈 우회거리를 더해요.")
-        PolicyLine("유류비", "부담 거리 ÷ 연비(${policy.fuelEfficiencyKmPerL}km/L) × 기준 유가(${policy.fuelPricePerL.toLong().won()}원/L)")
+        PolicyLine(
+            "충전비",
+            "부담 거리 ÷ 전비(${policy.efficiencyKmPerKwh.efficiency()}km/kWh) × 충전 단가(${policy.chargePricePerKwh.toLong().won()}원/kWh)",
+        )
         PolicyLine("통행료", "탄 구간에 있는 통행료만 따로 나눠요.")
         PolicyLine("최종 금액", "송금하기 쉽게 ${policy.roundUpUnit}원 단위로 올려요.")
         PolicyLine("정산 제외", "그 달에 한 번도 타지 않은 멤버는 정산하지 않아요.")
         Text(
-            "연비와 기준 유가는 차량에서 읽지 않고 [정산 정보 입력]에서 정한 값을 써요.",
+            when (policy.efficiencySource) {
+                EfficiencySource.MANUAL -> "이 차량에서 전비를 읽지 못해 [정산 정보 입력]에서 정한 전비를 써요. 충전 단가도 입력값이에요."
+                else -> "전비는 차량에서 읽은 ${policy.efficiencySource.label()} 전비를 써요. 충전 단가는 [정산 정보 입력]에서 정한 값이에요."
+            },
             style = MaterialTheme.typography.bodySmall,
             color = DsColors.OnSurfaceMuted,
         )
     }
 }
+
+private fun EfficiencySource.label(): String = when (this) {
+    EfficiencySource.VEHICLE_CUMULATIVE -> "차량 누적"
+    EfficiencySource.VEHICLE_SINCE_CHARGE -> "차량 충전 후"
+    EfficiencySource.MANUAL -> "입력값"
+}
+
+/** 5.5 → "5.5", 5.4321 → "5.4" */
+private fun Double.efficiency(): String = "%.1f".format(this)
 
 @Composable
 private fun PolicyLine(title: String, body: String) {

@@ -18,6 +18,7 @@ import com.paircar.domain.model.NaviProvider
 import com.paircar.domain.model.NaviScreen
 import com.paircar.domain.model.Place
 import com.paircar.domain.model.RouteRequest
+import com.paircar.domain.model.VehicleEnergy
 import com.paircar.domain.model.WaypointSlot
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -40,6 +41,14 @@ interface CarpoolRepository {
 interface SettlementRepository {
     /** 정산 내역이 있는 달, 최근 달이 먼저 */
     val settlements: StateFlow<List<MonthlySettlement>>
+}
+
+/**
+ * 차량 전비·주행거리 조회. 구현: vehicle.energy.PleosVehicleEnergyRepository(Vehicle SDK).
+ * 차량이 아니거나 값을 못 읽으면 해당 값이 null 이다.
+ */
+interface VehicleEnergyRepository {
+    suspend fun read(): VehicleEnergy
 }
 
 /**
