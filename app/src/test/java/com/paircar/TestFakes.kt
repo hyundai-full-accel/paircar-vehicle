@@ -37,7 +37,7 @@ class FakeRoutes(private val directFails: Boolean = false) : RoutePreviewReposit
                 direct -> 59_400
                 else -> 68_300
             },
-            durationSeconds = 3_600,
+            durationSeconds = if (direct) 3_120 else 3_660,
             isApproximate = failed,
         )
     }

@@ -189,7 +189,7 @@ fun PairCarRoot() {
                             onSelectDate = historyViewModel::selectDate,
                             onSelectRecord = historyViewModel::selectRecord,
                             onMoveWeek = historyViewModel::moveWeek,
-                            onNotReady = notReady,
+                            onMessage = notReady,
                         )
                     }
                     Screen.MATCHING -> {

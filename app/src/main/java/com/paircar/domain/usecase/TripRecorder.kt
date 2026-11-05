@@ -3,6 +3,7 @@ package com.paircar.domain.usecase
 import com.paircar.domain.model.BoardingStatus
 import com.paircar.domain.model.CarpoolTrip
 import com.paircar.domain.model.DistanceSource
+import com.paircar.domain.model.RouteComparison
 import com.paircar.domain.model.TripKind
 import com.paircar.domain.model.TripRecord
 import com.paircar.domain.model.TripStop
@@ -16,6 +17,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.time.LocalDateTime
+import kotlin.math.roundToInt
 
 /** 운행 종료 화면에 보여줄 처리 결과 */
 data class TripFinish(
@@ -68,6 +70,19 @@ class TripRecorder(
             planned.distanceMeters / 1000.0 to DistanceSource.ROUTE_ESTIMATE
         }
 
+        // 길찾기가 실패해 직선 추정이 섞이면 비교값이 틀어지므로 비워 둔다
+        val comparison = direct
+            ?.takeIf { !it.isApproximate && !planned.isApproximate }
+            ?.let {
+                // 화면에 보이는 단위(0.1km·분)로 맞춰 둬야 두 값의 차이가 표시된 추가 거리·시간과 맞는다
+                RouteComparison(
+                    directKm = tenthKm(it.distanceMeters),
+                    directSeconds = wholeMinutes(it.durationSeconds),
+                    carpoolKm = tenthKm(planned.distanceMeters),
+                    carpoolSeconds = wholeMinutes(planned.durationSeconds),
+                )
+            }
+
         val record = TripRecord(
             id = "trip-$started",
             kind = if (boarded.isEmpty()) TripKind.SOLO else TripKind.CARPOOL,
@@ -76,19 +91,17 @@ class TripRecorder(
             endTime = endedAt.toLocalTime().withNano(0),
             distanceKm = distanceKm,
             distanceSource = source,
-            // 길찾기가 실패해 직선 추정이 섞이면 우회거리가 틀어지므로 비워 둔다
-            detourKm = direct
-                ?.takeIf { !it.isApproximate && !planned.isApproximate }
-                ?.let { ((planned.distanceMeters - it.distanceMeters) / 1000.0).coerceAtLeast(0.0) },
+            detourKm = comparison?.extraKm,
             stops = buildList {
-                add(TripStop(started.toLocalTime().withNano(0), TripStopType.DEPART, trip.origin.name, trip.origin.point))
+                add(TripStop(started.toLocalTime().withNano(0), TripStopType.DEPART, trip.origin.name, trip.origin.point, area = trip.origin.area))
                 boarded.forEach { passenger ->
-                    add(TripStop(passenger.boardedAt!!.withNano(0), TripStopType.PICKUP, passenger.pickup.name, passenger.pickup.point, passenger.name))
+                    add(TripStop(passenger.boardedAt!!.withNano(0), TripStopType.PICKUP, passenger.pickup.name, passenger.pickup.point, passenger.name, passenger.pickup.area))
                 }
-                add(TripStop(endedAt.toLocalTime().withNano(0), TripStopType.ARRIVE, trip.destination.name, trip.destination.point))
+                add(TripStop(endedAt.toLocalTime().withNano(0), TripStopType.ARRIVE, trip.destination.name, trip.destination.point, area = trip.destination.area))
             },
             path = planned.path,
             arrivedByNavi = arrivedByNavi,
+            routeComparison = comparison,
         )
         _lastFinish.value = TripFinish(record, boarded.size, saved = null)
         val saved = runCatching { recordRepository.save(record) }.isSuccess
@@ -101,6 +114,10 @@ class TripRecorder(
 
         /** 이보다 짧으면 주행거리 값이 안 바뀐 것으로 본다 */
         const val MIN_ODOMETER_KM = 0.1
+
+        fun tenthKm(meters: Int): Double = (meters / 100.0).roundToInt() / 10.0
+
+        fun wholeMinutes(seconds: Int): Int = (seconds / 60.0).roundToInt() * 60
     }
 }
 

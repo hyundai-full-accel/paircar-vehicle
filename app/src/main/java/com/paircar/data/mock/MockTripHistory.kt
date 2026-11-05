@@ -1,6 +1,7 @@
 package com.paircar.data.mock
 
 import com.paircar.domain.model.DistanceSource
+import com.paircar.domain.model.RouteComparison
 import com.paircar.domain.model.TripKind
 import com.paircar.domain.model.TripRecord
 import com.paircar.domain.model.TripStop
@@ -24,6 +25,10 @@ object MockTripHistory {
     private const val CARPOOL_KM = 68.3
     private const val DIRECT_KM = 59.4
 
+    // 같은 경로의 OSRM 예상 시간
+    private const val CARPOOL_SECONDS = 61 * 60
+    private const val DIRECT_SECONDS = 52 * 60
+
     fun records(until: LocalDate): List<TripRecord> {
         val from = MockCarpoolData.crew.startDate
         return generateSequence(from) { it.plusDays(1) }
@@ -43,7 +48,7 @@ object MockTripHistory {
         val start = trip.departureTime.plusMinutes((jitter - 2).toLong())
         val end = trip.estimatedArrivalTime.plusMinutes((jitter * 2 - 4).toLong()).minusMinutes(if (solo) 9 else 0)
         val stops = buildList {
-            add(TripStop(start, TripStopType.DEPART, trip.origin.name, trip.origin.point))
+            add(TripStop(start, TripStopType.DEPART, trip.origin.name, trip.origin.point, area = trip.origin.area))
             if (!solo) {
                 add(
                     TripStop(
@@ -52,10 +57,11 @@ object MockTripHistory {
                         pickup.pickup.name,
                         pickup.pickup.point,
                         passengerName = pickup.name,
+                        area = pickup.pickup.area,
                     ),
                 )
             }
-            add(TripStop(end, TripStopType.ARRIVE, trip.destination.name, trip.destination.point))
+            add(TripStop(end, TripStopType.ARRIVE, trip.destination.name, trip.destination.point, area = trip.destination.area))
         }
         return TripRecord(
             id = "mock-$date",
@@ -69,6 +75,7 @@ object MockTripHistory {
             stops = stops,
             path = emptyList(),
             arrivedByNavi = true,
+            routeComparison = if (solo) null else RouteComparison(DIRECT_KM, DIRECT_SECONDS, CARPOOL_KM, CARPOOL_SECONDS),
         )
     }
 }

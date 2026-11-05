@@ -45,6 +45,14 @@
     <!-- 픽업 알림(내비 위 팝업 대안) PoC -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- 운행 요약 공유: 공유 창을 받을 앱이 있는지 확인 (Android 11+ 패키지 가시성) -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.SEND" />
+            <data android:mimeType="text/plain" />
+        </intent>
+    </queries>
+
     <application
         android:name=".PairCarApplication"
         android:allowBackup="false"

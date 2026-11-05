@@ -3,6 +3,7 @@ package com.paircar.data.local
 import android.util.Log
 import com.paircar.core.model.GeoPoint
 import com.paircar.domain.model.DistanceSource
+import com.paircar.domain.model.RouteComparison
 import com.paircar.domain.model.TripKind
 import com.paircar.domain.model.TripRecord
 import com.paircar.domain.model.TripStop
@@ -72,6 +73,13 @@ class LocalTripRecordRepository(
         .put("arrivedByNavi", arrivedByNavi)
         .put("stops", JSONArray(stops.map { it.toJson() }))
         .put("path", JSONArray(path.map { JSONArray().put(it.latitude).put(it.longitude) }))
+        .put("comparison", routeComparison?.toJson() ?: JSONObject.NULL)
+
+    private fun RouteComparison.toJson() = JSONObject()
+        .put("directKm", directKm)
+        .put("directSeconds", directSeconds)
+        .put("carpoolKm", carpoolKm)
+        .put("carpoolSeconds", carpoolSeconds)
 
     private fun TripStop.toJson() = JSONObject()
         .put("time", time.toString())
@@ -80,6 +88,7 @@ class LocalTripRecordRepository(
         .put("lat", point.latitude)
         .put("lng", point.longitude)
         .put("passenger", passengerName ?: JSONObject.NULL)
+        .put("area", area ?: JSONObject.NULL)
 
     private fun JSONObject.toRecord(): TripRecord {
         val stops = getJSONArray("stops")
@@ -96,6 +105,15 @@ class LocalTripRecordRepository(
             stops = (0 until stops.length()).map { stops.getJSONObject(it).toStop() },
             path = (0 until path.length()).map { path.getJSONArray(it).let { p -> GeoPoint(p.getDouble(0), p.getDouble(1)) } },
             arrivedByNavi = getBoolean("arrivedByNavi"),
+            // 이 값이 생기기 전에 저장한 기록에는 없다
+            routeComparison = optJSONObject("comparison")?.let {
+                RouteComparison(
+                    directKm = it.getDouble("directKm"),
+                    directSeconds = it.getInt("directSeconds"),
+                    carpoolKm = it.getDouble("carpoolKm"),
+                    carpoolSeconds = it.getInt("carpoolSeconds"),
+                )
+            },
         )
     }
 
@@ -105,6 +123,7 @@ class LocalTripRecordRepository(
         placeName = getString("place"),
         point = GeoPoint(getDouble("lat"), getDouble("lng")),
         passengerName = if (isNull("passenger")) null else getString("passenger"),
+        area = if (has("area") && !isNull("area")) getString("area") else null,
     )
 
     private companion object {

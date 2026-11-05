@@ -103,6 +103,13 @@ class CarpoolUseCasesTest {
         assertEquals(DistanceSource.ROUTE_ESTIMATE, record.distanceSource)
         assertEquals(68.3, record.distanceKm, 1e-9)
         assertEquals(8.9, record.detourKm!!, 1e-9)
+        // 경유지 없이 갔을 때와 비교값을 같이 남긴다
+        val comparison = record.routeComparison!!
+        assertEquals(59.4, comparison.directKm, 1e-9)
+        assertEquals(68.3, comparison.carpoolKm, 1e-9)
+        assertEquals(540, comparison.extraSeconds)
+        // 공유 요약용 지역은 시·구까지만
+        assertEquals(listOf("경기 성남시 분당구", "경기 성남시 분당구", "서울 서초구"), record.stops.map { it.area })
         assertEquals(true, record.arrivedByNavi)
         assertEquals(true, tripRecorder.lastFinish.value?.saved)
     }
@@ -120,6 +127,7 @@ class CarpoolUseCasesTest {
         val record = records.records.value.single()
         assertEquals(TripKind.CARPOOL, record.kind)
         assertEquals(null, record.detourKm)
+        assertEquals(null, record.routeComparison)
     }
 
     @Test

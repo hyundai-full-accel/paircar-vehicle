@@ -34,6 +34,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -77,7 +78,7 @@ fun HistoryScreen(
     onSelectDate: (LocalDate) -> Unit,
     onSelectRecord: (TripRecord) -> Unit,
     onMoveWeek: (Long) -> Unit,
-    onNotReady: (String) -> Unit,
+    onMessage: (String) -> Unit,
 ) {
     val month = state.month
     if (month == null) {
@@ -89,6 +90,8 @@ fun HistoryScreen(
         return
     }
     var routeDetail by remember { mutableStateOf(false) }
+    var share by remember { mutableStateOf(false) }
+    val context = LocalContext.current
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val summary: @Composable (Modifier, Boolean) -> Unit = { modifier, fillHeight ->
@@ -99,7 +102,7 @@ fun HistoryScreen(
                 state = state,
                 fillHeight = fillHeight,
                 onOpenRoute = { routeDetail = true },
-                onShare = { onNotReady("운행 요약 공유는 다음 단계에서 제공돼요") },
+                onShare = { share = true },
                 modifier = modifier,
             )
         }
@@ -118,6 +121,13 @@ fun HistoryScreen(
         val selected = state.selected
         if (routeDetail && selected != null) {
             RouteDetailModal(selected, state.selectedPath) { routeDetail = false }
+        }
+        if (share && selected != null) {
+            ShareSummaryModal(
+                record = selected,
+                onShare = { text -> onMessage(shareTripSummary(context, text)) },
+                onClose = { share = false },
+            )
         }
     }
 }
@@ -295,7 +305,7 @@ private fun WeekArrow(left: Boolean, onClick: () -> Unit) {
 
 /** 07:10 [출발] 집 ……… 출발 */
 @Composable
-private fun Timeline(stops: List<TripStop>) {
+internal fun Timeline(stops: List<TripStop>) {
     Column {
         stops.forEachIndexed { index, stop ->
             Row(
@@ -315,11 +325,7 @@ private fun Timeline(stops: List<TripStop>) {
                 )
                 Text(stop.time.hm(), style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Medium))
                 GrayChip(
-                    when (stop.type) {
-                        TripStopType.DEPART -> "출발"
-                        TripStopType.PICKUP -> "픽업"
-                        TripStopType.ARRIVE -> "도착"
-                    },
+                    stop.type.label(),
                 )
                 Text(
                     stop.placeName,
@@ -402,31 +408,6 @@ private fun DetailRow(label: String, value: String) {
     Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(label, style = MaterialTheme.typography.bodyMedium, color = DsColors.OnSurfaceMuted, modifier = Modifier.weight(1f))
         Text(value, style = MaterialTheme.typography.labelLarge)
-    }
-}
-
-/** 경로 상세: 큰 지도 + 정류장 순서 */
-@Composable
-private fun BoxScope.RouteDetailModal(record: TripRecord, path: List<GeoPoint>, onClose: () -> Unit) {
-    InScreenModal(onDismiss = onClose, maxWidth = 1100.dp) {
-        ModalTitle("${record.date.monthDayWeek()} 경로", onClose)
-        CarpoolMap(
-            stops = record.toMapStops(),
-            route = path,
-            current = null,
-            insets = MapInsets(64),
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(420.dp)
-                .clip(RoundedCornerShape(16.dp)),
-        )
-        Timeline(record.stops)
-        DetailRow("총 이동 거리", record.distanceLabel())
-        Text(
-            "경로선은 경로 미리보기(OSRM)로 그린 것이라 실제로 달린 길과 다를 수 있어요.",
-            style = MaterialTheme.typography.bodySmall,
-            color = DsColors.OnSurfaceMuted,
-        )
     }
 }
 

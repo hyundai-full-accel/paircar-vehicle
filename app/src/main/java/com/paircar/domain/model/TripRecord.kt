@@ -27,7 +27,23 @@ data class TripStop(
     val point: GeoPoint,
     /** 픽업이면 탄 동승자 */
     val passengerName: String? = null,
+    /** 공유 요약에 쓰는 시·구 단위 지역 (상세 주소 대신). 모르면 null */
+    val area: String? = null,
 )
+
+/**
+ * 같은 출발·도착을 경유지 없이 갔을 때와 동승자를 태우며 갔을 때의 경로 미리보기 비교.
+ * 둘 다 실제로 길찾기가 된 값일 때만 만든다(직선 추정이 섞이면 차이가 틀어진다).
+ */
+data class RouteComparison(
+    val directKm: Double,
+    val directSeconds: Int,
+    val carpoolKm: Double,
+    val carpoolSeconds: Int,
+) {
+    val extraKm: Double get() = (carpoolKm - directKm).coerceAtLeast(0.0)
+    val extraSeconds: Int get() = (carpoolSeconds - directSeconds).coerceAtLeast(0)
+}
 
 /** 진행 중인 운행의 기록 시작값 (출발 시각, 출발 때 주행거리) */
 data class TripSession(
@@ -51,6 +67,8 @@ data class TripRecord(
     val path: List<GeoPoint>,
     /** 이 운행이 내비 도착 이벤트로 끝났는지 (false 면 운전자가 직접 종료) */
     val arrivedByNavi: Boolean,
+    /** 직접 이동 vs 동승 경로 비교. 동승자가 없거나 길찾기가 실패했으면 null */
+    val routeComparison: RouteComparison? = null,
 ) {
     val durationSeconds: Int
         get() = Duration.between(startTime, endTime).seconds.toInt().coerceAtLeast(0)
