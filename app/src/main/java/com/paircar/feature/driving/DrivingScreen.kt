@@ -2,6 +2,7 @@ package com.paircar.feature.driving
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -21,6 +22,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -29,6 +34,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.paircar.core.ui.components.CloseIcon
 import com.paircar.core.ui.components.ParkedOnlyNotice
 import com.paircar.core.ui.components.PrimaryActionButton
 import com.paircar.core.ui.components.TonalActionButton
@@ -56,6 +62,7 @@ import java.time.LocalTime
  * - 차량 위치: getCurrentLocationInfo (화면이 보이는 동안 5초 간격 요청)
  * - 주행 중 조작은 "내비 보기" 하나. 탑승 완료·운행 종료는 정차 중에만.
  * - 운행이 끝나 기록 처리 결과가 있으면 운행 종료 화면([TripEndScreen])을 보여준다.
+ * - 운행 중 좁은 창(내비와 나란히 3분할)에서는 지도 없이 [DrivingPanel] 을 보여준다.
  */
 @Composable
 fun DrivingScreen(
@@ -66,6 +73,8 @@ fun DrivingScreen(
     onStartCarpool: () -> Unit,
     onFinishTrip: () -> Unit,
     onTripDone: () -> Unit,
+    panelMode: Boolean,
+    onClosePanel: () -> Unit,
     onRefresh: () -> Unit,
 ) {
     val trip = state.trip
@@ -82,6 +91,10 @@ fun DrivingScreen(
     }
     BoxWithConstraints(Modifier.fillMaxSize().clip(RoundedCornerShape(24.dp))) {
         val compact = maxWidth < 900.dp
+        if (panelMode && trip?.status == CarpoolStatus.IN_PROGRESS) {
+            DrivingPanel(state, trip, onConfirmBoarding, onMarkNoShow, onFinishTrip, onClosePanel)
+            return@BoxWithConstraints
+        }
         val density = LocalDensity.current
         CarpoolMap(
             stops = trip?.toMapStops().orEmpty(),
@@ -104,6 +117,11 @@ fun DrivingScreen(
                 .then(if (compact) Modifier.fillMaxWidth() else Modifier.width(560.dp)),
         ) {
             NextStopCard(state, trip, onConfirmBoarding, onMarkNoShow, onStartCarpool, onFinishTrip)
+            // 앱이 3분할을 직접 요청할 API 가 없어(Pleos) 운전자에게 window bar 를 안내한다
+            var hintClosed by rememberSaveable { mutableStateOf(false) }
+            if (!compact && trip?.status == CarpoolStatus.IN_PROGRESS && !hintClosed) {
+                SplitHint(onClose = { hintClosed = true }, modifier = Modifier.padding(top = 16.dp))
+            }
         }
         Button(
             onClick = onOpenNavigation,
@@ -233,6 +251,35 @@ private fun ArrivalPill(state: CarpoolUiState, trip: CarpoolTrip, modifier: Modi
             .background(DsColors.Surface, RoundedCornerShape(40.dp))
             .padding(horizontal = 28.dp, vertical = 16.dp),
     )
+}
+
+/** 내비 + 페어카 3분할 안내. 내비가 넓게 떠 있으면 화면 오른쪽 끝 ⋮ 를 끌어야 페어카가 옆에 좁게 열린다. */
+@Composable
+private fun SplitHint(onClose: () -> Unit, modifier: Modifier) {
+    Row(
+        modifier
+            .fillMaxWidth()
+            .shadow(6.dp, RoundedCornerShape(20.dp))
+            .background(DsColors.Surface, RoundedCornerShape(20.dp))
+            .padding(start = 24.dp, top = 16.dp, bottom = 16.dp, end = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text("내비와 나란히 보기", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "화면 오른쪽 끝 ⋮ 막대를 왼쪽으로 끌면 내비 옆에 페어카가 열려요. 다음부터는 주행을 시작해도 나란히 유지돼요.",
+                style = MaterialTheme.typography.bodySmall,
+                color = DsColors.OnSurfaceMuted,
+            )
+        }
+        Box(
+            Modifier.size(TouchTargetHeight).clip(CircleShape).clickable(onClick = onClose),
+            contentAlignment = Alignment.Center,
+        ) {
+            CloseIcon(Modifier.size(24.dp))
+        }
+    }
 }
 
 @Composable

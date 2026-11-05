@@ -3,6 +3,7 @@ package com.paircar.domain.model
 import com.paircar.core.model.GeoPoint
 import java.time.Duration
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.LocalTime
 
 /** 동승자를 태웠는지 */
@@ -26,6 +27,12 @@ data class TripStop(
     val point: GeoPoint,
     /** 픽업이면 탄 동승자 */
     val passengerName: String? = null,
+)
+
+/** 진행 중인 운행의 기록 시작값 (출발 시각, 출발 때 주행거리) */
+data class TripSession(
+    val startedAt: LocalDateTime,
+    val startOdometerKm: Double?,
 )
 
 /** 끝난 운행 한 건. 운행을 마치면 기기에 저장한다(정산 서버 미구축). */

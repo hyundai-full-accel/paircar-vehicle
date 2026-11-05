@@ -25,6 +25,9 @@ import com.paircar.domain.model.NaviScreen
 import com.paircar.domain.repository.CarpoolRepository
 import com.paircar.domain.repository.DrivingStateRepository
 import com.paircar.domain.repository.NaviRepository
+import com.paircar.domain.repository.SettlementRepository
+import com.paircar.domain.repository.VehicleEnergyRepository
+import com.paircar.domain.model.estimateRideWon
 import com.paircar.domain.usecase.FinishCarpoolUseCase
 import com.paircar.domain.usecase.StartCarpoolGuidanceUseCase
 import com.paircar.domain.usecase.TripFinish
@@ -53,6 +56,8 @@ data class CarpoolUiState(
     val crew: Crew? = null,
     /** 방금 끝낸 운행의 기록 처리 결과 (운행 종료 화면) */
     val tripFinish: TripFinish? = null,
+    /** 첫 동승자의 이번 운행 예상 분담금 (원). 경로를 못 구했으면 null */
+    val estimatedShareWon: Long? = null,
 ) {
     fun isAllowed(action: CarpoolAction) = DrivingPolicy.isAllowed(action, driving)
 }
@@ -66,11 +71,16 @@ class CarpoolViewModel(
     private val finishCarpool: FinishCarpoolUseCase,
     tripRecorder: TripRecorder,
     private val routePreviewRepository: RoutePreviewRepository,
+    private val settlementRepository: SettlementRepository,
+    private val energyRepository: VehicleEnergyRepository,
 ) : ViewModel() {
 
     private val message = MutableStateFlow<String?>(null)
     private val routePreview = MutableStateFlow<RoutePreview?>(null)
     private val directPreview = MutableStateFlow<RoutePreview?>(null)
+    /** 첫 픽업 지점 → 목적지 (동승 구간) */
+    private val sharedPreview = MutableStateFlow<RoutePreview?>(null)
+    private val estimatedShare = MutableStateFlow<Long?>(null)
 
     val uiState: StateFlow<CarpoolUiState> = combine(
         combine(
@@ -85,9 +95,16 @@ class CarpoolViewModel(
         naviRepository.currentLocation,
         routePreview,
         directPreview,
-        combine(carpoolRepository.crew, tripRecorder.lastFinish, ::Pair),
-    ) { state, location, preview, direct, (crew, finish) ->
-        state.copy(currentLocation = location, routePreview = preview, directPreview = direct, crew = crew, tripFinish = finish)
+        combine(carpoolRepository.crew, tripRecorder.lastFinish, estimatedShare, ::Triple),
+    ) { state, location, preview, direct, (crew, finish, share) ->
+        state.copy(
+            currentLocation = location,
+            routePreview = preview,
+            directPreview = direct,
+            crew = crew,
+            tripFinish = finish,
+            estimatedShareWon = share,
+        )
     }.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5_000),
@@ -102,9 +119,30 @@ class CarpoolViewModel(
         // 출발지 → 오늘 참석하는 동승자 픽업(시간순) → 목적지. 정류장이 바뀔 때만 다시 구한다.
         previewWhenChanged(routePreview) { it.planStops() }
         previewWhenChanged(directPreview) { it.directStops() }
+        previewWhenChanged(sharedPreview) { trip ->
+            trip.pickupsInOrder.firstOrNull()?.let { listOf(it.pickup.point, trip.destination.point) }
+        }
+        estimateShare()
     }
 
-    private fun previewWhenChanged(target: MutableStateFlow<RoutePreview?>, stopsOf: (CarpoolTrip) -> List<GeoPoint>) {
+    /**
+     * 예상 분담금 = (동승 구간 ÷ 인원 + 우회거리) ÷ 전비 × 충전 단가, 100원 올림 (월 정산과 같은 기준).
+     * 전비는 차량(Vehicle SDK) 값이 있으면 그 값, 없으면 정산 입력값.
+     */
+    private fun estimateShare() {
+        viewModelScope.launch {
+            val energy = energyRepository.read()
+            combine(carpoolRepository.todayTrip, routePreview, directPreview, sharedPreview, settlementRepository.settlements) { trip, planned, direct, shared, settlements ->
+                val policy = settlements.firstOrNull()?.policy?.withVehicle(energy)
+                val routes = listOfNotNull(planned, direct, shared)
+                if (trip == null || policy == null || routes.size < 3 || routes.any { it.isApproximate }) return@combine null
+                val detourKm = ((planned!!.distanceMeters - direct!!.distanceMeters) / 1000.0).coerceAtLeast(0.0)
+                policy.estimateRideWon(shared!!.distanceMeters / 1000.0, headcount = 1 + trip.pickupsInOrder.size, detourKm = detourKm)
+            }.collect { estimatedShare.value = it }
+        }
+    }
+
+    private fun previewWhenChanged(target: MutableStateFlow<RoutePreview?>, stopsOf: (CarpoolTrip) -> List<GeoPoint>?) {
         viewModelScope.launch {
             carpoolRepository.todayTrip
                 .map { trip -> trip?.let(stopsOf) }
@@ -196,6 +234,8 @@ class CarpoolViewModel(
                     container.finishCarpool,
                     container.tripRecorder,
                     container.routePreviewRepository,
+                    container.settlementRepository,
+                    container.vehicleEnergyRepository,
                 )
             }
         }

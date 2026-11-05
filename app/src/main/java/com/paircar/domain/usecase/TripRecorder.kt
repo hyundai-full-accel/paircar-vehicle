@@ -6,9 +6,11 @@ import com.paircar.domain.model.DistanceSource
 import com.paircar.domain.model.TripKind
 import com.paircar.domain.model.TripRecord
 import com.paircar.domain.model.TripStop
+import com.paircar.domain.model.TripSession
 import com.paircar.domain.model.TripStopType
 import com.paircar.domain.repository.RoutePreviewRepository
 import com.paircar.domain.repository.TripRecordRepository
+import com.paircar.domain.repository.TripSessionStore
 import com.paircar.domain.repository.VehicleEnergyRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -33,24 +35,24 @@ class TripRecorder(
     private val recordRepository: TripRecordRepository,
     private val energyRepository: VehicleEnergyRepository,
     private val routePreviewRepository: RoutePreviewRepository,
+    private val sessionStore: TripSessionStore = MemoryTripSessionStore(),
     private val now: () -> LocalDateTime = LocalDateTime::now,
 ) {
-    private var startedAt: LocalDateTime? = null
-    private var startOdometerKm: Double? = null
 
     private val _lastFinish = MutableStateFlow<TripFinish?>(null)
     val lastFinish: StateFlow<TripFinish?> = _lastFinish.asStateFlow()
 
     suspend fun start() {
-        startedAt = now()
-        startOdometerKm = energyRepository.read().odometerKm
+        sessionStore.saveSession(TripSession(now(), energyRepository.read().odometerKm))
         _lastFinish.value = null
     }
 
     suspend fun finish(trip: CarpoolTrip, arrivedByNavi: Boolean) {
         val endedAt = now()
-        // 앱이 다시 켜져 시작 시각을 잃었으면 일정상 출발 시각을 쓴다
-        val started = startedAt?.takeIf { it.toLocalDate() == trip.date } ?: trip.date.atTime(trip.departureTime)
+        val session = sessionStore.loadSession()?.takeIf { it.startedAt.toLocalDate() == trip.date }
+        // 시작값을 잃었으면(다른 날 기록 등) 일정상 출발 시각을 쓴다
+        val started = session?.startedAt ?: trip.date.atTime(trip.departureTime)
+        val startOdometerKm = session?.startOdometerKm
         val endOdometerKm = energyRepository.read().odometerKm
 
         val boarded = trip.acceptedPassengers
@@ -91,8 +93,7 @@ class TripRecorder(
         _lastFinish.value = TripFinish(record, boarded.size, saved = null)
         val saved = runCatching { recordRepository.save(record) }.isSuccess
         _lastFinish.value = TripFinish(record, boarded.size, saved = saved)
-        startedAt = null
-        startOdometerKm = null
+        sessionStore.saveSession(null)
     }
 
     private companion object {
@@ -100,5 +101,14 @@ class TripRecorder(
 
         /** 이보다 짧으면 주행거리 값이 안 바뀐 것으로 본다 */
         const val MIN_ODOMETER_KM = 0.1
+    }
+}
+
+/** 기기에 두지 않는 기본값 (테스트용) */
+class MemoryTripSessionStore : TripSessionStore {
+    private var session: TripSession? = null
+    override fun loadSession() = session
+    override fun saveSession(session: TripSession?) {
+        this.session = session
     }
 }

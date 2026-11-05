@@ -176,10 +176,9 @@ private fun SummaryCard(
             }
             HorizontalDivider(color = DsColors.Divider)
             WeekStrip(state, onSelectDate, onMoveWeek)
+            // 넓은 화면에서만 타임라인을 따로 스크롤한다. 좁은 창은 화면 전체가 스크롤되므로 겹치면 안 된다.
             Column(
-                Modifier
-                    .then(if (fillHeight) Modifier.weight(1f) else Modifier)
-                    .verticalScroll(rememberScrollState()),
+                if (fillHeight) Modifier.weight(1f).verticalScroll(rememberScrollState()) else Modifier,
             ) {
                 if (state.dayRecords.size > 1) {
                     Row(Modifier.padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {

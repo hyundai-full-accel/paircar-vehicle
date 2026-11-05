@@ -37,6 +37,17 @@ data class SettlementPolicy(
     }
 }
 
+/**
+ * 운행 한 번의 예상 분담금 (주행 중 화면). 월 정산과 같은 계산을 한 번 탄 것으로 한다.
+ * @param sharedKm 동승자가 타는 구간 (픽업 → 목적지)
+ * @param headcount 그 구간을 함께 타는 인원 (운전자 포함)
+ */
+fun SettlementPolicy.estimateRideWon(sharedKm: Double, headcount: Int, detourKm: Double): Long =
+    SettlementReceipt(
+        MemberRides(name = "", rides = 1, sharedKm = sharedKm, headcount = headcount, detourKmPerRide = detourKm),
+        this,
+    ).totalWon
+
 /** 동승자가 낸 돈의 상태 */
 enum class PaymentStatus { UNCONFIRMED, PAID }
 

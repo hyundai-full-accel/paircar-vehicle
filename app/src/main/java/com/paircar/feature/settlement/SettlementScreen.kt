@@ -106,24 +106,25 @@ fun SettlementScreen(
                 modifier = modifier,
             )
         }
-        val receiptPanel: @Composable (Modifier) -> Unit = { modifier ->
+        val receiptPanel: @Composable (Modifier, Boolean) -> Unit = { modifier, fillHeight ->
             ReceiptPanel(
                 settlement = settlement,
                 receipt = selected,
                 onOpenReceipt = { modal = SettlementModal.Receipt(selected.member.name) },
                 onRegisterAccount = { onNotReady("수취 계좌 등록은 다음 단계에서 제공돼요") },
+                fillHeight = fillHeight,
                 modifier = modifier,
             )
         }
         if (maxWidth >= ExpandedWidthThreshold) {
             Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
                 summary(Modifier.weight(1.75f).fillMaxHeight(), true)
-                receiptPanel(Modifier.weight(1f).fillMaxHeight())
+                receiptPanel(Modifier.weight(1f).fillMaxHeight(), true)
             }
         } else {
             ScrollColumn {
                 summary(Modifier.fillMaxWidth(), false)
-                receiptPanel(Modifier.fillMaxWidth())
+                receiptPanel(Modifier.fillMaxWidth(), false)
             }
         }
 
@@ -329,6 +330,7 @@ private fun ReceiptPanel(
     receipt: SettlementReceipt,
     onOpenReceipt: () -> Unit,
     onRegisterAccount: () -> Unit,
+    fillHeight: Boolean,
     modifier: Modifier,
 ) {
     Panel(modifier) {
@@ -357,7 +359,8 @@ private fun ReceiptPanel(
             textAlign = TextAlign.End,
             modifier = Modifier.fillMaxWidth(),
         )
-        Spacer(Modifier.weight(1f))
+        // 넓은 화면에서만 버튼을 카드 아래에 붙인다(좁은 창은 스크롤)
+        if (fillHeight) Spacer(Modifier.weight(1f))
         PrimaryActionButton("영수증 상세 보기", onOpenReceipt, Modifier.fillMaxWidth())
         TonalActionButton(
             if (settlement.receiverAccount == null) "수취 계좌 등록" else "수취 계좌 변경",

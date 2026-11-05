@@ -4,6 +4,7 @@ import android.content.Context
 import com.paircar.BuildConfig
 import com.paircar.core.notification.PickupNotifier
 import com.paircar.data.local.LocalTripRecordRepository
+import com.paircar.data.local.PrefsTripStores
 import com.paircar.data.mock.MockCarpoolRepository
 import com.paircar.data.mock.MockSettlementRepository
 import com.paircar.data.mock.MockTripHistory
@@ -33,8 +34,14 @@ class AppContainer(context: Context) {
 
     val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
+    // Pleos 는 창을 닫으면 앱 프로세스를 끝내므로 진행 중인 운행은 기기에 둔다
+    private val tripStores = PrefsTripStores(context)
+
     // 서버 API 확정 후 REST 구현으로 교체
-    val carpoolRepository: CarpoolRepository = MockCarpoolRepository(inviteBaseUrl = BuildConfig.INVITE_BASE_URL)
+    val carpoolRepository: CarpoolRepository = MockCarpoolRepository(
+        inviteBaseUrl = BuildConfig.INVITE_BASE_URL,
+        stateStore = tripStores,
+    )
 
     // 정산 서버 확정 후 교체
     val settlementRepository: SettlementRepository = MockSettlementRepository()
@@ -58,7 +65,7 @@ class AppContainer(context: Context) {
 
     val vehicleCheckStore: VehicleCheckStore = PrefsVehicleCheckStore(context)
 
-    val tripRecorder = TripRecorder(tripRecordRepository, vehicleEnergyRepository, routePreviewRepository)
+    val tripRecorder = TripRecorder(tripRecordRepository, vehicleEnergyRepository, routePreviewRepository, tripStores)
 
     val startCarpoolGuidance = StartCarpoolGuidanceUseCase(carpoolRepository, naviRepository, tripRecorder)
 

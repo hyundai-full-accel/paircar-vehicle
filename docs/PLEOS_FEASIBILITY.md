@@ -81,6 +81,9 @@
 | 화면 크기 변경에 따른 Compose 대응 | 🧪 | `AdaptivePanes`: 폭 ≥1000dp면 2단, 미만이면 1단. landscape(1682px)=2단, portrait(841px)=1단 확인 |
 | Navigation과 페어카 동시 표시 | 🧪 | 위 분할 상태에서 `requestNavigationScreen(OverviewRoute)` 호출 시 **페어카를 가리지 않고 내비 창 안에서** 경로 개요 표시 |
 | 주행 중 분할 화면 제한 | 🧪 제한 없음(에뮬레이터) | 기어 D(UXR DO=true) 상태에서도 분할 유지, 페어카는 주행 화면으로 전환 |
+| 분할에서 페어카 창 닫기 | 🧪 `finish()` 로 가능 | 닫으면 내비가 앱 영역 전체로 넓어짐. `moveTaskToBack(true)` 는 **무시됨**(창 그대로). 닫으면 Pleos 가 **앱 프로세스를 끝냄**(logcat `Killing … remove task`) → 진행 중 운행 상태를 기기에 저장해 다시 열 때 이어 붙임 |
+| 주행 시작 시 3분할 자동 전환 | ⛔ 앱이 요청할 방법 없음 / 🧪 **이미 분할이면 유지** | `FLAG_ACTIVITY_LAUNCH_ADJACENT` 로 내비를 띄워도 무시(내비가 landscape 로 앞에 옴). 분할은 Pleos 홈 화면(`ai.umos.homescreen` `WindowBarDragHandler`)이 처리. Pleos Platform SDK `WindowStateManager` 는 상태 조회·구독만 공개하고 배치 변경은 SystemUI 전용([window-state](https://document.pleos.ai/api-reference/pleos-platform-sdk/domain-guides/window-state)). 🧪 페어카가 분할(portrait)인 상태에서 주행 시작 → 내비는 자기 창에서 경로 선택, 페어카는 주행 패널로 바뀌고 **3분할 유지**. 🧪 내비가 넓게 떠 있을 때 window bar 를 끌면 직전 앱(페어카)이 옆에 열림 → 넓은 주행 화면에 이 방법을 안내 |
+| 닫은 뒤 다시 열기 | 🧪 앱 아이콘으로 가능, 단 **landscape(앱 영역 전체)** 로 열림 | 문서: "신규 앱은 이전 앱의 orientation과 동일하게 표시". 내비가 landscape 면 페어카도 landscape. 3분할로 되돌리는 건 사용자가 window bar 를 다시 드래그해야 함(앱이 요청하는 API 없음). window bar 탭으로 좌우 위치 교체 확인 |
 
 관찰된 동작 (문서 정책과 일치)
 
