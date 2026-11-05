@@ -161,7 +161,8 @@ fun HomeScreen(
 private fun TripCard(state: CarpoolUiState, trip: CarpoolTrip, onOpenMatching: () -> Unit, fillHeight: Boolean, modifier: Modifier) {
     Box(modifier.clip(RoundedCornerShape(24.dp)).background(DsColors.Surface)) {
         // 헤더(구분선 위) 높이에 맞춰야 차가 경유지 변경 알림 밑으로 숨지 않는다
-        CarHeaderArt(Modifier.align(Alignment.TopEnd).height(220.dp))
+        // 넓은 카드에서 꽉 채우면 차가 위아래로 잘려, 오른쪽 60% 에만 깐다
+        CarHeaderArt(Modifier.align(Alignment.TopEnd).fillMaxWidth(0.6f).height(220.dp))
         Column(Modifier.padding(horizontal = 36.dp, vertical = 32.dp)) {
             Row {
                 Column(Modifier.weight(1f)) {

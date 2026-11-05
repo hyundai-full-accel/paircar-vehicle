@@ -99,7 +99,7 @@ private fun ArrivalCard(finish: TripFinish, destinationName: String) {
             .clip(RoundedCornerShape(24.dp))
             .background(DsColors.Surface),
     ) {
-        CarHeaderArt(Modifier.align(Alignment.BottomEnd).height(170.dp))
+        CarHeaderArt(Modifier.matchParentSize())
         Column(Modifier.padding(horizontal = 32.dp, vertical = 28.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("운행 종료", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))

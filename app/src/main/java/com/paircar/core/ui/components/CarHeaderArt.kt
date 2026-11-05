@@ -1,48 +1,44 @@
 package com.paircar.core.ui.components
 
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
+import androidx.annotation.DrawableRes
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.painter.BitmapPainter
-import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.res.imageResource
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import com.paircar.R
-import com.paircar.core.ui.theme.DsColors
+import kotlin.math.max
+import kotlin.math.roundToInt
 
 /**
- * 시작 화면 일러스트에서 차 부분만 잘라 카드 오른쪽 위에 흐리게 깐다 (오늘의 카풀·운행 종료 머리 영역).
- * 높이만 정하면 너비는 잘라낸 영역 비율로 정해진다.
+ * 시안의 카드 머리 배경 그림 (왼쪽이 흰색으로 빠지고 오른쪽에 그림).
+ * 영역을 꽉 채우도록 잘라(Crop) 그 뒤에 그린다. 크기 측정에는 끼어들지 않아 머리 영역 높이는 내용대로 정해진다.
  */
 @Composable
-fun CarHeaderArt(modifier: Modifier, background: Color = DsColors.Surface) {
-    val bitmap = ImageBitmap.imageResource(R.drawable.startup_car)
-    val painter = remember(bitmap) { BitmapPainter(bitmap, srcOffset = ArtOffset, srcSize = ArtSize) }
-    // 상자 비율을 잘라낸 영역과 같게 두어 늘어나거나 잘리지 않게 한다
-    Box(modifier.aspectRatio(ArtSize.width.toFloat() / ArtSize.height)) {
-        Image(painter, contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(Brush.horizontalGradient(0f to background, 0.4f to Color.Transparent)),
-        )
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(Brush.verticalGradient(0f to background.copy(alpha = 0.6f), 0.3f to Color.Transparent, 0.9f to Color.Transparent, 1f to background)),
-        )
+fun Modifier.headerBackground(@DrawableRes image: Int, alignment: Alignment = Alignment.CenterEnd): Modifier {
+    val bitmap = ImageBitmap.imageResource(image)
+    return drawBehind {
+        val scale = max(size.width / bitmap.width, size.height / bitmap.height)
+        val drawn = IntSize((bitmap.width * scale).roundToInt(), (bitmap.height * scale).roundToInt())
+        val offset = alignment.align(drawn, IntSize(size.width.roundToInt(), size.height.roundToInt()), layoutDirection)
+        clipRect {
+            drawImage(bitmap, dstOffset = offset, dstSize = drawn)
+        }
     }
 }
 
-// startup_car.webp(1601x946) 에서 차가 있는 오른쪽 아래 영역 (오른쪽 끝 테두리선은 뺀다)
-private val ArtOffset = IntOffset(680, 190)
-private val ArtSize = IntSize(880, 540)
+/**
+ * 차 그림 배경 (오늘의 카풀 머리·주행 패널 다음 픽업 카드·운행 종료 카드). 깔 영역 크기를 modifier 로 정한다.
+ * 그림 아래쪽 절반에 차가 있어, 위아래가 잘릴 때 차가 남도록 조금 아래 기준으로 자른다.
+ */
+@Composable
+fun CarHeaderArt(modifier: Modifier) {
+    Box(modifier.headerBackground(R.drawable.bg_header_car, CarAlignment))
+}
+
+private val CarAlignment = BiasAlignment(horizontalBias = 1f, verticalBias = 0.45f)

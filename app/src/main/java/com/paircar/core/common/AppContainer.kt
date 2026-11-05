@@ -17,6 +17,7 @@ import com.paircar.domain.repository.SettlementRepository
 import com.paircar.domain.repository.TripRecordRepository
 import com.paircar.domain.repository.VehicleEnergyRepository
 import com.paircar.domain.usecase.ApplyNaviEventUseCase
+import com.paircar.domain.usecase.CarpoolRouteSync
 import com.paircar.domain.usecase.FinishCarpoolUseCase
 import com.paircar.domain.usecase.StartCarpoolGuidanceUseCase
 import com.paircar.domain.usecase.TripRecorder
@@ -67,9 +68,11 @@ class AppContainer(context: Context) {
 
     val tripRecorder = TripRecorder(tripRecordRepository, vehicleEnergyRepository, routePreviewRepository, tripStores)
 
-    val startCarpoolGuidance = StartCarpoolGuidanceUseCase(carpoolRepository, naviRepository, tripRecorder)
+    val routeSync = CarpoolRouteSync(naviRepository)
+
+    val startCarpoolGuidance = StartCarpoolGuidanceUseCase(carpoolRepository, routeSync, tripRecorder)
 
     val finishCarpool = FinishCarpoolUseCase(carpoolRepository, tripRecorder)
 
-    val applyNaviEvent = ApplyNaviEventUseCase(carpoolRepository, finishCarpool)
+    val applyNaviEvent = ApplyNaviEventUseCase(carpoolRepository, finishCarpool, routeSync)
 }

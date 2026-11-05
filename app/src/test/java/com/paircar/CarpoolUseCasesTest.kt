@@ -10,6 +10,7 @@ import com.paircar.domain.model.TripKind
 import com.paircar.domain.model.TripStopType
 import com.paircar.domain.model.VehicleEnergy
 import com.paircar.domain.usecase.ApplyNaviEventUseCase
+import com.paircar.domain.usecase.CarpoolRouteSync
 import com.paircar.domain.usecase.FinishCarpoolUseCase
 import com.paircar.domain.usecase.StartCarpoolGuidanceUseCase
 import com.paircar.domain.usecase.TripRecorder
@@ -39,7 +40,7 @@ class CarpoolUseCasesTest {
         val carpool = MockCarpoolRepository(latencyMillis = 0, tripFactory = { TestTrips.commute() })
         val navi = MockNaviRepository(backgroundScope)
 
-        val result = StartCarpoolGuidanceUseCase(carpool, navi, recorder())(carpool.todayTrip.value!!)
+        val result = StartCarpoolGuidanceUseCase(carpool, CarpoolRouteSync(navi), recorder())(carpool.todayTrip.value!!)
 
         assertEquals(true, result is NaviCommandResult.Rejected)
         assertEquals(CarpoolStatus.SCHEDULED, carpool.todayTrip.value!!.status)
@@ -52,7 +53,7 @@ class CarpoolUseCasesTest {
         navi.connect()
         runCurrent()
 
-        val result = StartCarpoolGuidanceUseCase(carpool, navi, recorder())(carpool.todayTrip.value!!)
+        val result = StartCarpoolGuidanceUseCase(carpool, CarpoolRouteSync(navi), recorder())(carpool.todayTrip.value!!)
 
         assertEquals(NaviCommandResult.Requested, result)
         assertEquals(CarpoolStatus.IN_PROGRESS, carpool.todayTrip.value!!.status)
@@ -62,7 +63,7 @@ class CarpoolUseCasesTest {
     fun `navi arrival events update boarding and trip status`() = runTest {
         val carpool = MockCarpoolRepository(latencyMillis = 0, tripFactory = { TestTrips.commute() })
         carpool.updateTripStatus(CarpoolStatus.IN_PROGRESS)
-        val apply = ApplyNaviEventUseCase(carpool, FinishCarpoolUseCase(carpool, recorder()))
+        val apply = ApplyNaviEventUseCase(carpool, FinishCarpoolUseCase(carpool, recorder()), CarpoolRouteSync(MockNaviRepository(backgroundScope)))
 
         apply(NaviEvent.WaypointArrived("판교역 1번 출구"))
         assertEquals(BoardingStatus.ARRIVED_AT_PICKUP, carpool.todayTrip.value!!.passengers.first { it.id == "p-1" }.boardingStatus)
@@ -89,7 +90,7 @@ class CarpoolUseCasesTest {
         tripRecorder.start()
         carpool.updateBoardingStatus("p-1", BoardingStatus.BOARDED)
 
-        ApplyNaviEventUseCase(carpool, FinishCarpoolUseCase(carpool, tripRecorder))(NaviEvent.DestinationArrived("현대자동차 양재사옥"))
+        ApplyNaviEventUseCase(carpool, FinishCarpoolUseCase(carpool, tripRecorder), CarpoolRouteSync(MockNaviRepository(backgroundScope)))(NaviEvent.DestinationArrived("현대자동차 양재사옥"))
 
         val record = records.records.value.single()
         assertEquals(TripKind.CARPOOL, record.kind)

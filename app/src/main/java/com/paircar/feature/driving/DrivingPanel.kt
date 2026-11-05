@@ -145,7 +145,7 @@ private fun NextStopCard(state: CarpoolUiState, trip: CarpoolTrip) {
             .clip(RoundedCornerShape(24.dp))
             .background(DsColors.Surface),
     ) {
-        CarHeaderArt(Modifier.align(Alignment.TopEnd).height(190.dp))
+        CarHeaderArt(Modifier.matchParentSize())
         Column(Modifier.padding(horizontal = 32.dp, vertical = 28.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Text(if (next != null) "다음 픽업" else "목적지", style = MaterialTheme.typography.labelLarge, color = DsColors.OnSurfaceMuted)
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {

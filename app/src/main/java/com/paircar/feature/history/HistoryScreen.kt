@@ -34,13 +34,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.paircar.R
 import com.paircar.core.model.GeoPoint
 import com.paircar.core.ui.components.ChevronIcon
 import com.paircar.core.ui.components.ExpandedWidthThreshold
@@ -53,6 +53,7 @@ import com.paircar.core.ui.components.ScrollColumn
 import com.paircar.core.ui.components.SectionHeader
 import com.paircar.core.ui.components.TonalActionButton
 import com.paircar.core.ui.components.formatDuration
+import com.paircar.core.ui.components.headerBackground
 import com.paircar.core.ui.map.CarpoolMap
 import com.paircar.core.ui.map.MapInsets
 import com.paircar.core.ui.map.toMapStops
@@ -138,11 +139,11 @@ private fun SummaryCard(
             .clip(RoundedCornerShape(24.dp))
             .background(DsColors.Surface),
     ) {
-        // 시안의 연한 그라데이션 머리 영역
+        // 시안의 머리 영역 배경 그림
         Column(
             Modifier
                 .fillMaxWidth()
-                .background(Brush.horizontalGradient(listOf(DsColors.Surface, Color(0xFFE8EDF5))))
+                .headerBackground(R.drawable.bg_header_history)
                 .padding(start = 36.dp, end = 36.dp, top = 32.dp, bottom = 28.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {

@@ -28,6 +28,7 @@ import com.paircar.domain.repository.NaviRepository
 import com.paircar.domain.repository.SettlementRepository
 import com.paircar.domain.repository.VehicleEnergyRepository
 import com.paircar.domain.model.estimateRideWon
+import com.paircar.domain.usecase.CarpoolRouteSync
 import com.paircar.domain.usecase.FinishCarpoolUseCase
 import com.paircar.domain.usecase.StartCarpoolGuidanceUseCase
 import com.paircar.domain.usecase.TripFinish
@@ -68,6 +69,7 @@ class CarpoolViewModel(
     private val naviRepository: NaviRepository,
     private val drivingStateRepository: DrivingStateRepository,
     private val startCarpoolGuidance: StartCarpoolGuidanceUseCase,
+    private val routeSync: CarpoolRouteSync,
     private val finishCarpool: FinishCarpoolUseCase,
     tripRecorder: TripRecorder,
     private val routePreviewRepository: RoutePreviewRepository,
@@ -204,9 +206,18 @@ class CarpoolViewModel(
         message.value = null
     }
 
+    /** 탑승 상태를 바꾸고, 남은 경유지가 달라졌으면 내비 경로를 다시 요청한다. */
     private fun updateBoarding(passengerId: String, status: BoardingStatus) {
         if (!guard(CarpoolAction.CONFIRM_BOARDING)) return
-        viewModelScope.launch { carpoolRepository.updateBoardingStatus(passengerId, status) }
+        viewModelScope.launch {
+            carpoolRepository.updateBoardingStatus(passengerId, status)
+            val trip = carpoolRepository.todayTrip.value ?: return@launch
+            when (val result = routeSync.sync(trip)) {
+                NaviCommandResult.Requested -> message.value = "남은 경유지로 내비 경로를 다시 요청했어요"
+                is NaviCommandResult.Rejected -> message.value = result.toUserMessage()
+                null -> Unit
+            }
+        }
     }
 
     /** UI 에서 버튼을 숨기더라도 상태 전환 경합에 대비해 한 번 더 확인한다. */
@@ -231,6 +242,7 @@ class CarpoolViewModel(
                     container.naviRepository,
                     container.drivingStateRepository,
                     container.startCarpoolGuidance,
+                    container.routeSync,
                     container.finishCarpool,
                     container.tripRecorder,
                     container.routePreviewRepository,
