@@ -9,8 +9,10 @@ import com.paircar.PairCarApplication
 import com.paircar.core.common.VehicleCheckStore
 import com.paircar.domain.model.NaviConnectionState
 import com.paircar.domain.model.NaviProvider
+import com.paircar.domain.model.VehicleEnergy
 import com.paircar.domain.repository.CarpoolRepository
 import com.paircar.domain.repository.NaviRepository
+import com.paircar.domain.repository.VehicleEnergyRepository
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,7 +29,7 @@ import java.time.LocalDateTime
 /** 시작 화면에서 차례로 확인하는 단계 */
 enum class StartupStep { CONNECT, CHANGES, STOPS, FEATURES }
 
-/** 지원 기능 한 줄. [verified] 가 null 이면 아직 확인 중, false 면 확인할 수 있는 차량 API 가 없음 */
+/** 지원 기능 한 줄. [verified] 가 null 이면 아직 확인 중, false 면 확인하지 못함(API 없음 또는 값을 못 읽음) */
 data class StartupFeature(val label: String, val verified: Boolean?)
 
 data class StartupUiState(
@@ -39,6 +41,8 @@ data class StartupUiState(
     /** 이번 확인에서 반영한 변경사항(불참 등) 수. 동기화 전이면 null */
     val changeCount: Int? = null,
     val hasLocation: Boolean = false,
+    /** Vehicle SDK 에서 읽은 값. 아직 읽기 전이면 null */
+    val energy: VehicleEnergy? = null,
     val failed: Boolean = false,
     val done: Boolean = false,
 ) {
@@ -52,13 +56,14 @@ data class StartupUiState(
             val checked = done || failed
             fun status(ok: Boolean) = if (ok) true else if (checked) false else null
             return listOf(
-                // getCurrentLocationInfo 응답이 왔는지
-                StartupFeature("차량 위치 및 주행 거리", status(hasLocation)),
+                // 위치: NaviHelper getCurrentLocationInfo, 주행 거리: Vehicle SDK Odometer
+                StartupFeature("차량 위치 및 주행 거리", status(hasLocation && energy?.odometerKm != null)),
                 // NaviHelper 연결
                 StartupFeature("내비게이션 경로 연동", status(connected)),
-                // 아래 둘은 아직 확인할 수 있는 차량 API 가 없다
+                // Vehicle SDK 에 Seat·Door 도메인이 있지만 아직 연동하지 않았다
                 StartupFeature("좌석 / 안전벨트 / 도어 확인", if (checked) false else null),
-                StartupFeature("차량 연비 / 전비 정보", if (checked) false else null),
+                // Vehicle SDK EvBattery 전비
+                StartupFeature("차량 연비 / 전비 정보", status(energy?.evEfficiency != null)),
             )
         }
 }
@@ -66,6 +71,7 @@ data class StartupUiState(
 private data class Progress(
     val step: StartupStep = StartupStep.CONNECT,
     val changeCount: Int? = null,
+    val energy: VehicleEnergy? = null,
     val failed: Boolean = false,
     val done: Boolean = false,
 )
@@ -77,6 +83,7 @@ private data class Progress(
 class StartupViewModel(
     private val naviRepository: NaviRepository,
     private val carpoolRepository: CarpoolRepository,
+    private val energyRepository: VehicleEnergyRepository,
     private val store: VehicleCheckStore,
     private val now: () -> LocalDateTime = LocalDateTime::now,
     private val clock: () -> Long = System::currentTimeMillis,
@@ -101,6 +108,7 @@ class StartupViewModel(
             step = p.step,
             changeCount = p.changeCount,
             hasLocation = location != null,
+            energy = p.energy,
             failed = p.failed,
             done = p.done,
         )
@@ -134,7 +142,8 @@ class StartupViewModel(
             }
 
             progress.update { it.copy(step = StartupStep.FEATURES) }
-            paced { }
+            val energy = paced { energyRepository.read() }
+            progress.update { it.copy(energy = energy) }
 
             val checkedAt = now()
             store.saveCheckedAt(checkedAt)
@@ -174,7 +183,12 @@ class StartupViewModel(
         val Factory = viewModelFactory {
             initializer {
                 val container = (this[APPLICATION_KEY] as PairCarApplication).container
-                StartupViewModel(container.naviRepository, container.carpoolRepository, container.vehicleCheckStore)
+                StartupViewModel(
+                    container.naviRepository,
+                    container.carpoolRepository,
+                    container.vehicleEnergyRepository,
+                    container.vehicleCheckStore,
+                )
             }
         }
     }

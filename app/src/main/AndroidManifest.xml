@@ -29,6 +29,16 @@
     <uses-permission android:name="pleos.car.permission.NAVI_ROUTE_SEARCH" />
     <uses-permission android:name="pleos.car.permission.NAVI_CUSTOM_MAP" />
 
+    <!--
+        Vehicle SDK 퍼미션 (정산 전비·주행거리)
+        https://document.pleos.ai/docs/pleos-only/connect-sdk-pleos/Vehicle/vehicle-permission
+        CAR_ENERGY : EvBattery.getCumulativeEvEfficiency / getSinceChargeEvEfficiency
+        CAR_DRIVE  : Odometer.getCurrentDistanceDriven
+        실차 배포는 Pleos App Market 과 사전 협의·승인된 범위에서만 사용할 수 있다.
+    -->
+    <uses-permission android:name="pleos.car.permission.CAR_ENERGY" />
+    <uses-permission android:name="pleos.car.permission.CAR_DRIVE" />
+
     <!-- 지도 타일(지도 SDK PoC), 추후 서버 API -->
     <uses-permission android:name="android.permission.INTERNET" />
 

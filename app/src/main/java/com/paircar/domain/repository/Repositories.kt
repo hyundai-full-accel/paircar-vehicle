@@ -9,6 +9,7 @@ import com.paircar.domain.model.CrewInvite
 import com.paircar.domain.model.DrivingState
 import com.paircar.domain.model.GuidanceState
 import com.paircar.domain.model.MatchStatus
+import com.paircar.domain.model.MonthlySettlement
 import com.paircar.domain.model.NaviCommandResult
 import com.paircar.domain.model.NaviConnectionState
 import com.paircar.domain.model.NaviDiagnosticCall
@@ -17,6 +18,7 @@ import com.paircar.domain.model.NaviProvider
 import com.paircar.domain.model.NaviScreen
 import com.paircar.domain.model.Place
 import com.paircar.domain.model.RouteRequest
+import com.paircar.domain.model.VehicleEnergy
 import com.paircar.domain.model.WaypointSlot
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -33,6 +35,20 @@ interface CarpoolRepository {
 
     /** 크루 초대 QR 에 넣을 모바일웹 주소를 발급한다. */
     suspend fun createInvite(): CrewInvite
+}
+
+/** 월별 정산 기록. 정산 서버 미구축이라 지금은 Mock 만 있다. */
+interface SettlementRepository {
+    /** 정산 내역이 있는 달, 최근 달이 먼저 */
+    val settlements: StateFlow<List<MonthlySettlement>>
+}
+
+/**
+ * 차량 전비·주행거리 조회. 구현: vehicle.energy.PleosVehicleEnergyRepository(Vehicle SDK).
+ * 차량이 아니거나 값을 못 읽으면 해당 값이 null 이다.
+ */
+interface VehicleEnergyRepository {
+    suspend fun read(): VehicleEnergy
 }
 
 /**

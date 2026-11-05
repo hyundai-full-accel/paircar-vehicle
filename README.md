@@ -21,7 +21,7 @@
 | 비동기 | Kotlin Coroutines + StateFlow / SharedFlow |
 | 빌드 | Gradle 9.4.1 (Kotlin DSL, version catalog), AGP 9.2.0 |
 | SDK | minSdk 28 / targetSdk 34 / compileSdk 37 |
-| 차량 SDK | Pleos `ai.pleos.playground:NaviHelper:3.0.5`, AAOS `android.car` (CarUxRestrictions) |
+| 차량 SDK | Pleos `ai.pleos.playground:NaviHelper:3.0.5`, Pleos `ai.pleos.playground:Vehicle:2.3.2` (정산 전비·주행거리), AAOS `android.car` (CarUxRestrictions) |
 | 지도 | MapLibre `org.maplibre.gl:android-sdk:13.6.1` + OpenFreeMap Positron 타일 (API 키·Google Play 서비스 불필요) |
 | 경로 미리보기 | OSRM 공개 데모 서버 (프로토타입 전용, 실패 시 직선) — 서비스 전 상용 길찾기 API로 교체 |
 | 폰트 | Pretendard 1.3.9 (`res/font`, SIL OFL 1.1 — [docs/licenses/Pretendard-OFL.txt](docs/licenses/Pretendard-OFL.txt)) |
@@ -61,10 +61,11 @@ app/src/main/java/com/paircar/
 │   └── navipoc/               # NaviHelper API 검증용 개발 화면 (설정 > 지원 기능 확인)
 └── vehicle/
     ├── navi/                  # PleosNaviRepository(SDK), MockNaviRepository, Factory
+    ├── energy/                # PleosVehicleEnergyRepository (Vehicle SDK 전비·주행거리)
     └── state/                 # CarDrivingStateRepository (CarUxRestrictionsManager)
 ```
 
-UI·도메인 코드는 Pleos SDK 타입을 직접 참조하지 않는다. SDK 의존은 `vehicle/navi/PleosNaviRepository.kt` 한 파일에만 있다.
+UI·도메인 코드는 Pleos SDK 타입을 직접 참조하지 않는다. SDK 의존은 `vehicle/navi/PleosNaviRepository.kt`, `vehicle/energy/PleosVehicleEnergyRepository.kt` 두 파일에만 있다.
 
 ## 협업 흐름 (GitHub)
 

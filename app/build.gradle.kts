@@ -56,6 +56,7 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.tooling)
 
     implementation(libs.pleos.navihelper)
+    implementation(libs.pleos.vehicle)
     implementation(libs.maplibre.android)
     implementation(libs.zxing.core)
 

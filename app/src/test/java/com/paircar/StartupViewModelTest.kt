@@ -2,6 +2,8 @@ package com.paircar
 
 import com.paircar.core.common.VehicleCheckStore
 import com.paircar.data.mock.MockCarpoolRepository
+import com.paircar.domain.model.VehicleEnergy
+import com.paircar.domain.repository.VehicleEnergyRepository
 import com.paircar.feature.startup.StartupStep
 import com.paircar.feature.startup.StartupUiState
 import com.paircar.feature.startup.StartupViewModel
@@ -45,9 +47,24 @@ class StartupViewModelTest {
     @After
     fun tearDown() = Dispatchers.resetMain()
 
-    private fun TestScope.startup(connectDelayMillis: Long, store: VehicleCheckStore): Pair<StartupViewModel, () -> StartupUiState> {
+    private class FixedEnergy(private val energy: VehicleEnergy) : VehicleEnergyRepository {
+        override suspend fun read() = energy
+    }
+
+    private fun TestScope.startup(
+        connectDelayMillis: Long,
+        store: VehicleCheckStore,
+        energy: VehicleEnergy = VehicleEnergy(),
+    ): Pair<StartupViewModel, () -> StartupUiState> {
         val navi = MockNaviRepository(backgroundScope, connectDelayMillis = connectDelayMillis)
-        val viewModel = StartupViewModel(navi, MockCarpoolRepository(latencyMillis = 0), store, now = { checkedAt }, clock = { testScheduler.currentTime })
+        val viewModel = StartupViewModel(
+            navi,
+            MockCarpoolRepository(latencyMillis = 0),
+            FixedEnergy(energy),
+            store,
+            now = { checkedAt },
+            clock = { testScheduler.currentTime },
+        )
         backgroundScope.launch { viewModel.uiState.collect {} }
         return viewModel to { viewModel.uiState.value }
     }
@@ -69,6 +86,18 @@ class StartupViewModelTest {
         assertEquals(true, features["내비게이션 경로 연동"])
         // Mock 내비는 차량 위치를 주지 않는다
         assertEquals(false, features["차량 위치 및 주행 거리"])
+        // 차량이 아니면 전비를 읽지 못한다
+        assertEquals(false, features["차량 연비 / 전비 정보"])
+    }
+
+    @Test
+    fun `전비를 읽으면 지원 기능에 확인됨으로 나온다`() = runTest(dispatcher) {
+        val (_, state) = startup(connectDelayMillis = 500, MemoryStore(), VehicleEnergy(cumulativeEvEfficiency = 5.4))
+
+        advanceUntilIdle()
+
+        assertEquals(5.4, state().energy?.evEfficiency)
+        assertEquals(true, state().features.single { it.label == "차량 연비 / 전비 정보" }.verified)
     }
 
     @Test
