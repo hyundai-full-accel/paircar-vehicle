@@ -32,23 +32,45 @@ fun buildCarpoolRoutePlan(trip: CarpoolTrip): CarpoolRoutePlan {
 class StartCarpoolGuidanceUseCase(
     private val carpoolRepository: CarpoolRepository,
     private val naviRepository: NaviRepository,
+    private val tripRecorder: TripRecorder,
 ) {
     suspend operator fun invoke(trip: CarpoolTrip): NaviCommandResult {
         val plan = buildCarpoolRoutePlan(trip)
         val result = naviRepository.requestRoute(plan.request)
         if (result is NaviCommandResult.Requested && trip.status == CarpoolStatus.SCHEDULED) {
             carpoolRepository.updateTripStatus(CarpoolStatus.IN_PROGRESS)
+            tripRecorder.start()
         }
         return result
     }
 }
 
 /**
+ * 운행을 끝낸다: 탄 동승자 하차 처리 → 운행 완료 → 운행 기록 저장.
+ * 내비 목적지 도착 이벤트나 운전자의 [운행 종료]로 호출된다.
+ */
+class FinishCarpoolUseCase(
+    private val carpoolRepository: CarpoolRepository,
+    private val tripRecorder: TripRecorder,
+) {
+    suspend operator fun invoke(arrivedByNavi: Boolean) {
+        val trip = carpoolRepository.todayTrip.value ?: return
+        if (trip.status != CarpoolStatus.IN_PROGRESS) return
+        trip.acceptedPassengers
+            .filter { it.boardingStatus == BoardingStatus.BOARDED }
+            .forEach { carpoolRepository.updateBoardingStatus(it.id, BoardingStatus.DROPPED_OFF) }
+        carpoolRepository.updateTripStatus(CarpoolStatus.COMPLETED)
+        tripRecorder.finish(carpoolRepository.todayTrip.value ?: trip, arrivedByNavi)
+    }
+}
+
+/**
  * 내비 이벤트를 카풀 상태에 반영한다.
- * 경유지 도착 → 다음 동승자 '픽업 지점 도착', 목적지 도착 → 하차 처리 및 운행 완료.
+ * 경유지 도착 → 다음 동승자 '픽업 지점 도착', 목적지 도착 → 운행 종료(하차 처리·기록 저장).
  */
 class ApplyNaviEventUseCase(
     private val carpoolRepository: CarpoolRepository,
+    private val finishCarpool: FinishCarpoolUseCase,
 ) {
     suspend operator fun invoke(event: NaviEvent) {
         val trip = carpoolRepository.todayTrip.value ?: return
@@ -59,12 +81,7 @@ class ApplyNaviEventUseCase(
                     ?: return
                 carpoolRepository.updateBoardingStatus(next.id, BoardingStatus.ARRIVED_AT_PICKUP)
             }
-            is NaviEvent.DestinationArrived -> {
-                trip.acceptedPassengers
-                    .filter { it.boardingStatus == BoardingStatus.BOARDED }
-                    .forEach { carpoolRepository.updateBoardingStatus(it.id, BoardingStatus.DROPPED_OFF) }
-                carpoolRepository.updateTripStatus(CarpoolStatus.COMPLETED)
-            }
+            is NaviEvent.DestinationArrived -> finishCarpool(arrivedByNavi = true)
             else -> Unit
         }
     }

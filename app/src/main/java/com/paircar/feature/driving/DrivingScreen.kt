@@ -31,6 +31,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.paircar.core.ui.components.ParkedOnlyNotice
 import com.paircar.core.ui.components.PrimaryActionButton
+import com.paircar.core.ui.components.TonalActionButton
 import com.paircar.core.ui.components.TouchTargetHeight
 import com.paircar.core.ui.components.formatDistance
 import com.paircar.core.ui.components.formatDuration
@@ -53,23 +54,32 @@ import java.time.LocalTime
  * V-06 주행 중 현황. 지도 위에 "다음 경유지까지 남은 거리" 카드 하나와 도착 정보만 크게 띄운다.
  * - 남은 거리/시간: NaviHelper onWayPointInfo / onDestinationInfo (m, 초)
  * - 차량 위치: getCurrentLocationInfo (화면이 보이는 동안 5초 간격 요청)
- * - 주행 중 조작은 "내비 보기" 하나. 탑승 완료는 정차 중에만.
+ * - 주행 중 조작은 "내비 보기" 하나. 탑승 완료·운행 종료는 정차 중에만.
+ * - 운행이 끝나 기록 처리 결과가 있으면 운행 종료 화면([TripEndScreen])을 보여준다.
  */
 @Composable
 fun DrivingScreen(
     state: CarpoolUiState,
     onOpenNavigation: () -> Unit,
     onConfirmBoarding: (passengerId: String) -> Unit,
+    onMarkNoShow: (passengerId: String) -> Unit,
     onStartCarpool: () -> Unit,
+    onFinishTrip: () -> Unit,
+    onTripDone: () -> Unit,
     onRefresh: () -> Unit,
 ) {
+    val trip = state.trip
+    val finish = state.tripFinish
+    if (trip?.status == CarpoolStatus.COMPLETED && finish != null) {
+        TripEndScreen(finish, trip.destination.name, onTripDone)
+        return
+    }
     LaunchedEffect(Unit) {
         while (isActive) {
             onRefresh()
             delay(REFRESH_MILLIS)
         }
     }
-    val trip = state.trip
     BoxWithConstraints(Modifier.fillMaxSize().clip(RoundedCornerShape(24.dp))) {
         val compact = maxWidth < 900.dp
         val density = LocalDensity.current
@@ -93,7 +103,7 @@ fun DrivingScreen(
                 .padding(20.dp)
                 .then(if (compact) Modifier.fillMaxWidth() else Modifier.width(560.dp)),
         ) {
-            NextStopCard(state, trip, onConfirmBoarding, onStartCarpool)
+            NextStopCard(state, trip, onConfirmBoarding, onMarkNoShow, onStartCarpool, onFinishTrip)
         }
         Button(
             onClick = onOpenNavigation,
@@ -115,7 +125,9 @@ private fun NextStopCard(
     state: CarpoolUiState,
     trip: CarpoolTrip?,
     onConfirmBoarding: (String) -> Unit,
+    onMarkNoShow: (String) -> Unit,
     onStartCarpool: () -> Unit,
+    onFinishTrip: () -> Unit,
 ) {
     Column(
         Modifier
@@ -151,7 +163,11 @@ private fun NextStopCard(
                     Sub(listOfNotNull(next.pickup.name, waypoint?.remainTimeSeconds?.let(::formatDuration)).joinToString(" · "))
                     StopProgress(trip)
                     if (state.isAllowed(CarpoolAction.CONFIRM_BOARDING)) {
-                        PrimaryActionButton("${next.name} 탑승 완료", { onConfirmBoarding(next.id) }, Modifier.fillMaxWidth())
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            PrimaryActionButton("${next.name} 탑승 완료", { onConfirmBoarding(next.id) }, Modifier.weight(2f))
+                            // 픽업 지점에 나오지 않으면 미탑승으로 넘기고 다음 경유지로
+                            TonalActionButton("미탑승", { onMarkNoShow(next.id) }, Modifier.weight(1f))
+                        }
                     } else {
                         ParkedOnlyNotice("정차 후 탑승을 확인하세요")
                     }
@@ -160,6 +176,12 @@ private fun NextStopCard(
                     Big(state.guidance.remainDistanceMeters?.let { "${formatDistance(it)} 남음" } ?: trip.destination.name)
                     Sub(listOfNotNull(trip.destination.name, state.guidance.remainTimeSeconds?.let(::formatDuration)).joinToString(" · "))
                     StopProgress(trip)
+                    // 내비 도착 이벤트가 오지 않을 때(에뮬레이터 등) 운전자가 직접 끝낸다
+                    if (state.isAllowed(CarpoolAction.FINISH_TRIP)) {
+                        TonalActionButton("운행 종료", onFinishTrip, Modifier.fillMaxWidth())
+                    } else {
+                        ParkedOnlyNotice("정차 후 운행을 종료할 수 있어요")
+                    }
                 }
             }
         }

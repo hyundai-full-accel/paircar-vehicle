@@ -44,7 +44,12 @@ class MockCarpoolRepository(
 
     override suspend fun updateBoardingStatus(passengerId: String, status: BoardingStatus) {
         delay(latencyMillis)
-        updatePassenger(passengerId) { it.copy(boardingStatus = status) }
+        updatePassenger(passengerId) {
+            it.copy(
+                boardingStatus = status,
+                boardedAt = if (status == BoardingStatus.BOARDED) now().toLocalTime() else it.boardedAt,
+            )
+        }
     }
 
     override suspend fun updateTripStatus(status: CarpoolStatus) {

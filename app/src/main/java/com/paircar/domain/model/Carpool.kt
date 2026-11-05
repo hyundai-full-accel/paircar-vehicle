@@ -39,6 +39,8 @@ data class Passenger(
     val attendance: Attendance = Attendance.ATTENDING,
     /** 픽업 장소가 바뀌었으면 바뀌기 전 장소 (경유지 변경 알림용) */
     val previousPickup: Place? = null,
+    /** 운전자가 탑승 완료를 누른 시각 (운행 기록용) */
+    val boardedAt: LocalTime? = null,
 ) {
     val isAttending: Boolean
         get() = attendance == Attendance.ATTENDING

@@ -25,7 +25,10 @@ import com.paircar.domain.model.NaviScreen
 import com.paircar.domain.repository.CarpoolRepository
 import com.paircar.domain.repository.DrivingStateRepository
 import com.paircar.domain.repository.NaviRepository
+import com.paircar.domain.usecase.FinishCarpoolUseCase
 import com.paircar.domain.usecase.StartCarpoolGuidanceUseCase
+import com.paircar.domain.usecase.TripFinish
+import com.paircar.domain.usecase.TripRecorder
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -48,6 +51,8 @@ data class CarpoolUiState(
     /** 경유지 없이 바로 갈 때 (경로 상세의 비교용) */
     val directPreview: RoutePreview? = null,
     val crew: Crew? = null,
+    /** 방금 끝낸 운행의 기록 처리 결과 (운행 종료 화면) */
+    val tripFinish: TripFinish? = null,
 ) {
     fun isAllowed(action: CarpoolAction) = DrivingPolicy.isAllowed(action, driving)
 }
@@ -58,6 +63,8 @@ class CarpoolViewModel(
     private val naviRepository: NaviRepository,
     private val drivingStateRepository: DrivingStateRepository,
     private val startCarpoolGuidance: StartCarpoolGuidanceUseCase,
+    private val finishCarpool: FinishCarpoolUseCase,
+    tripRecorder: TripRecorder,
     private val routePreviewRepository: RoutePreviewRepository,
 ) : ViewModel() {
 
@@ -78,9 +85,9 @@ class CarpoolViewModel(
         naviRepository.currentLocation,
         routePreview,
         directPreview,
-        carpoolRepository.crew,
-    ) { state, location, preview, direct, crew ->
-        state.copy(currentLocation = location, routePreview = preview, directPreview = direct, crew = crew)
+        combine(carpoolRepository.crew, tripRecorder.lastFinish, ::Pair),
+    ) { state, location, preview, direct, (crew, finish) ->
+        state.copy(currentLocation = location, routePreview = preview, directPreview = direct, crew = crew, tripFinish = finish)
     }.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5_000),
@@ -134,6 +141,15 @@ class CarpoolViewModel(
 
     fun markNoShow(passengerId: String) = updateBoarding(passengerId, BoardingStatus.NO_SHOW)
 
+    /** 내비 도착 이벤트 없이 운전자가 운행을 끝낸다: 안내 종료 → 하차 처리 → 기록 저장 */
+    fun finishTrip() {
+        if (!guard(CarpoolAction.FINISH_TRIP)) return
+        viewModelScope.launch {
+            naviRepository.cancelRoute()
+            finishCarpool(arrivedByNavi = false)
+        }
+    }
+
     fun cancelCarpool() {
         if (!guard(CarpoolAction.CANCEL_CARPOOL)) return
         viewModelScope.launch {
@@ -177,6 +193,8 @@ class CarpoolViewModel(
                     container.naviRepository,
                     container.drivingStateRepository,
                     container.startCarpoolGuidance,
+                    container.finishCarpool,
+                    container.tripRecorder,
                     container.routePreviewRepository,
                 )
             }

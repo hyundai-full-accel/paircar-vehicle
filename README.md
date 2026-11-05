@@ -43,20 +43,22 @@ app/src/main/java/com/paircar/
 │   ├── notification/          # 픽업 알림 (내비 위 팝업의 대안 PoC)
 │   └── ui/                    # 테마(Pretendard, 큰 글자), 시안 공용 컴포넌트, 지도, QR
 ├── data/
-│   ├── mock/                  # MockCarpoolData, MockCarpoolRepository
+│   ├── local/                 # 운행 기록 JSON 파일 저장 (LocalTripRecordRepository)
+│   ├── mock/                  # MockCarpoolData, MockCarpoolRepository, 지난 운행·정산 Mock
 │   └── remote/                # REST API 연동 지점(인터페이스만)
 ├── domain/
 │   ├── model/                 # Carpool, Navigation, DrivingState + DrivingPolicy
 │   ├── repository/            # CarpoolRepository, NaviRepository, DrivingStateRepository
-│   └── usecase/               # 경로 계획(경유지 ≤2), 안내 시작, 내비 이벤트 반영
+│   └── usecase/               # 경로 계획(경유지 ≤2), 안내 시작·운행 종료, 내비 이벤트 반영, 운행 기록(TripRecorder)
 ├── feature/
 │   ├── startup/               # 시작 화면: 차량 연결·변경사항·경유지·지원 기능 확인 후 오늘의 카풀로
 │   ├── home/                  # 탭 1. 오늘의 카풀 (V-02)
 │   ├── crew/                  # 탭 2. 내 크루 + 경로 상세 + QR 초대
-│   ├── carpool/               # 탭 3. 운행 기록(카풀 상세) + 공유 CarpoolViewModel
-│   ├── settlement/            # 탭 4. 월별 정산 (서버 전까지 빈 내역 + 정산 기준)
+│   ├── history/               # 탭 3. 운행 기록: 월 요약, 주간·하루 타임라인, 운행 상세
+│   ├── carpool/               # 홈·주행·운행 종료가 함께 쓰는 CarpoolViewModel
+│   ├── settlement/            # 탭 4. 월별 정산: 멤버별 정산, 영수증 (Mock 내역 + 차량 전비)
 │   ├── matching/              # 새 동승 요청 수락/거절 (정차 중 전용)
-│   ├── driving/               # 주행 중 간소화 화면 (V-06, 재작업 예정)
+│   ├── driving/               # 주행 중 간소화 화면 (V-06) + 운행 종료 화면
 │   ├── settings/              # 설정 + 연결된 차량(내비 연결 재확인/해제)
 │   └── navipoc/               # NaviHelper API 검증용 개발 화면 (설정 > 지원 기능 확인)
 └── vehicle/

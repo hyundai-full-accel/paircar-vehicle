@@ -43,11 +43,12 @@ import com.paircar.core.ui.components.TouchTargetHeight
 import com.paircar.core.ui.theme.DsColors
 import com.paircar.domain.model.DrivingPolicy
 import com.paircar.domain.model.NaviScreen
-import com.paircar.feature.carpool.CarpoolDetailScreen
 import com.paircar.feature.carpool.CarpoolViewModel
 import com.paircar.feature.crew.CrewScreen
 import com.paircar.feature.crew.CrewViewModel
 import com.paircar.feature.driving.DrivingScreen
+import com.paircar.feature.history.HistoryScreen
+import com.paircar.feature.history.HistoryViewModel
 import com.paircar.feature.home.HomeScreen
 import com.paircar.feature.matching.MatchingScreen
 import com.paircar.feature.matching.MatchingViewModel
@@ -69,14 +70,14 @@ private val BackStackSaver = listSaver<List<Screen>, String>(
 private enum class Tab(val label: String, val screen: Screen) {
     TODAY("오늘의 카풀", Screen.HOME),
     CREW("내 크루", Screen.CREW),
-    HISTORY("운행 기록", Screen.DETAIL),
+    HISTORY("운행 기록", Screen.HISTORY),
     SETTLEMENT("월별 정산", Screen.SETTLEMENT),
 }
 
 private fun Screen.tab(): Tab? = when (this) {
     Screen.HOME, Screen.DRIVING -> Tab.TODAY
     Screen.CREW, Screen.MATCHING -> Tab.CREW
-    Screen.DETAIL -> Tab.HISTORY
+    Screen.HISTORY -> Tab.HISTORY
     Screen.SETTLEMENT -> Tab.SETTLEMENT
     Screen.SETTINGS, Screen.NAVI_POC -> null
 }
@@ -148,7 +149,7 @@ fun PairCarRoot() {
                             invite = invite,
                             onOpenInvite = crewViewModel::ensureInvite,
                             onRegenerateInvite = crewViewModel::createInvite,
-                            onOpenHistory = { backStack = listOf(Screen.DETAIL) },
+                            onOpenHistory = { backStack = listOf(Screen.HISTORY) },
                             onOpenSettlement = { backStack = listOf(Screen.SETTLEMENT) },
                             onNotReady = notReady,
                         )
@@ -159,7 +160,20 @@ fun PairCarRoot() {
                         SettlementScreen(
                             state = settlementState,
                             onSelectMonth = settlementViewModel::selectMonth,
-                            onOpenHistory = { backStack = listOf(Screen.DETAIL) },
+                            onOpenHistory = { backStack = listOf(Screen.HISTORY) },
+                            onNotReady = notReady,
+                        )
+                    }
+                    Screen.HISTORY -> {
+                        val historyViewModel: HistoryViewModel = viewModel(factory = HistoryViewModel.Factory)
+                        val historyState by historyViewModel.uiState.collectAsStateWithLifecycle()
+                        HistoryScreen(
+                            state = historyState,
+                            onSelectMonth = historyViewModel::selectMonth,
+                            onSelectFilter = historyViewModel::selectFilter,
+                            onSelectDate = historyViewModel::selectDate,
+                            onSelectRecord = historyViewModel::selectRecord,
+                            onMoveWeek = historyViewModel::moveWeek,
                             onNotReady = notReady,
                         )
                     }
@@ -168,19 +182,15 @@ fun PairCarRoot() {
                         val matchingState by matchingViewModel.uiState.collectAsStateWithLifecycle()
                         MatchingScreen(matchingState, matchingViewModel::accept, matchingViewModel::decline)
                     }
-                    Screen.DETAIL -> CarpoolDetailScreen(
-                        state = state,
-                        onSetRoute = { carpoolViewModel.startGuidance() },
-                        onOpenNavigation = { carpoolViewModel.openNavigation(NaviScreen.MAP) },
-                        onShowRouteOverview = { carpoolViewModel.openNavigation(NaviScreen.ROUTE_OVERVIEW) },
-                        onConfirmBoarding = carpoolViewModel::confirmBoarding,
-                        onMarkNoShow = carpoolViewModel::markNoShow,
-                    )
                     Screen.DRIVING -> DrivingScreen(
                         state = state,
                         onOpenNavigation = { carpoolViewModel.openNavigation(NaviScreen.MAP) },
                         onConfirmBoarding = carpoolViewModel::confirmBoarding,
+                        onMarkNoShow = carpoolViewModel::markNoShow,
                         onStartCarpool = { carpoolViewModel.startGuidance() },
+                        onFinishTrip = carpoolViewModel::finishTrip,
+                        // 운행 종료 후에는 방금 저장한 기록(가장 최근)을 보여준다
+                        onTripDone = { backStack = listOf(Screen.HISTORY) },
                         onRefresh = carpoolViewModel::refreshNavi,
                     )
                     Screen.SETTINGS -> {

@@ -1,13 +1,11 @@
 package com.paircar.feature.home
 
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -38,23 +36,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.res.imageResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.paircar.R
+import com.paircar.core.ui.components.CarHeaderArt
 import com.paircar.core.ui.components.ExpandedWidthThreshold
 import com.paircar.core.ui.components.GrayChip
 import com.paircar.core.ui.components.InfoIcon
@@ -171,7 +161,7 @@ fun HomeScreen(
 private fun TripCard(state: CarpoolUiState, trip: CarpoolTrip, onOpenMatching: () -> Unit, fillHeight: Boolean, modifier: Modifier) {
     Box(modifier.clip(RoundedCornerShape(24.dp)).background(DsColors.Surface)) {
         // 헤더(구분선 위) 높이에 맞춰야 차가 경유지 변경 알림 밑으로 숨지 않는다
-        HeaderArt(Modifier.align(Alignment.TopEnd).height(220.dp))
+        CarHeaderArt(Modifier.align(Alignment.TopEnd).height(220.dp))
         Column(Modifier.padding(horizontal = 36.dp, vertical = 32.dp)) {
             Row {
                 Column(Modifier.weight(1f)) {
@@ -217,31 +207,6 @@ private fun TripCard(state: CarpoolUiState, trip: CarpoolTrip, onOpenMatching: (
         }
     }
 }
-
-/** 시작 화면 일러스트에서 차 부분만 잘라 카드 오른쪽 위에 흐리게 깐다 */
-@Composable
-private fun HeaderArt(modifier: Modifier) {
-    val bitmap = ImageBitmap.imageResource(R.drawable.startup_car)
-    val painter = remember(bitmap) { BitmapPainter(bitmap, srcOffset = ArtOffset, srcSize = ArtSize) }
-    // 상자 비율을 잘라낸 영역과 같게 두어 늘어나거나 잘리지 않게 한다
-    Box(modifier.aspectRatio(ArtSize.width.toFloat() / ArtSize.height)) {
-        Image(painter, contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(Brush.horizontalGradient(0f to DsColors.Surface, 0.4f to Color.Transparent)),
-        )
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(Brush.verticalGradient(0f to DsColors.Surface.copy(alpha = 0.6f), 0.3f to Color.Transparent, 0.9f to Color.Transparent, 1f to DsColors.Surface)),
-        )
-    }
-}
-
-// startup_car.webp(1601x946) 에서 차가 있는 오른쪽 아래 영역 (오른쪽 끝 테두리선은 뺀다)
-private val ArtOffset = IntOffset(680, 190)
-private val ArtSize = IntSize(880, 540)
 
 @Composable
 private fun CardDivider() {

@@ -35,6 +35,7 @@ enum class CarpoolAction {
     RESPOND_TO_REQUEST,
     VIEW_TRIP_DETAIL,
     CANCEL_CARPOOL,
+    FINISH_TRIP,
     NAVI_DEBUG,
     VIEW_CREW,
     INVITE_CREW,
