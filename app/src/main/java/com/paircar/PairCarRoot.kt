@@ -2,27 +2,31 @@ package com.paircar
 
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivity
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -65,6 +69,7 @@ import com.paircar.feature.settlement.SettlementScreen
 import com.paircar.feature.settlement.SettlementViewModel
 import com.paircar.feature.startup.StartupScreen
 import com.paircar.feature.startup.StartupViewModel
+import kotlinx.coroutines.delay
 
 private val BackStackSaver = listSaver<List<Screen>, String>(
     save = { stack -> stack.map { it.name } },
@@ -118,125 +123,128 @@ fun PairCarRoot() {
     BackHandler(enabled = canGoBack) { backStack = backStack.dropLast(1) }
 
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-        Column(
-            Modifier
-                .fillMaxSize()
-                .safeDrawingPadding()
-                .padding(horizontal = 24.dp, vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp),
-        ) {
-            if (!panelMode) {
-                TopBar(
-                    selected = shown.tab(),
-                    settingsSelected = shown == Screen.SETTINGS,
-                    canGoBack = canGoBack,
-                    onBack = { backStack = backStack.dropLast(1) },
-                    onHome = { backStack = listOf(Screen.HOME) },
-                    onSelectTab = { tab -> backStack = listOf(tab.screen) },
-                    onOpenSettings = { navigate(Screen.SETTINGS) },
-                )
-            }
-            state.message?.let { MessageBanner(it, carpoolViewModel::dismissMessage) }
-            Box(Modifier.weight(1f).fillMaxWidth()) {
-                when (shown) {
-                    Screen.HOME -> if (!startupDone) {
-                        val startupViewModel: StartupViewModel = viewModel(factory = StartupViewModel.Factory)
-                        val startupState by startupViewModel.uiState.collectAsStateWithLifecycle()
-                        StartupScreen(startupState, onRetry = startupViewModel::start, onFinish = {
-                            startupDone = true
-                            autoStartPending = startupState.done
-                        })
-                    } else {
-                        HomeScreen(
-                            state = state,
-                            autoStart = autoStartPending,
-                            onAutoStartHandled = { autoStartPending = false },
-                            onStartCarpool = { carpoolViewModel.startGuidance { navigate(Screen.DRIVING) } },
-                            onOpenDriving = { navigate(Screen.DRIVING) },
-                            onOpenMatching = { navigate(Screen.MATCHING) },
-                        )
-                    }
-                    Screen.CREW -> {
-                        val crewViewModel: CrewViewModel = viewModel(factory = CrewViewModel.Factory)
-                        val invite by crewViewModel.invite.collectAsStateWithLifecycle()
-                        CrewScreen(
-                            state = state,
-                            invite = invite,
-                            onOpenInvite = crewViewModel::ensureInvite,
-                            onRegenerateInvite = crewViewModel::createInvite,
-                            onOpenHistory = { backStack = listOf(Screen.HISTORY) },
-                            onOpenSettlement = { backStack = listOf(Screen.SETTLEMENT) },
-                            onNotReady = notReady,
-                        )
-                    }
-                    Screen.SETTLEMENT -> {
-                        val settlementViewModel: SettlementViewModel = viewModel(factory = SettlementViewModel.Factory)
-                        val settlementState by settlementViewModel.uiState.collectAsStateWithLifecycle()
-                        // 분담 내역에서 운행을 누르면 운행 기록 탭에서 그 운행을 연다
-                        val historyViewModel: HistoryViewModel = viewModel(factory = HistoryViewModel.Factory)
-                        SettlementScreen(
-                            state = settlementState,
-                            onSelectMonth = settlementViewModel::selectMonth,
-                            onSaveSettings = { settlementViewModel.saveSettings(it, notReady) },
-                            onRequest = { settlementViewModel.requestSettlement(notReady) },
-                            onOpenTrip = { record ->
-                                historyViewModel.openRecord(record)
-                                backStack = listOf(Screen.HISTORY)
-                            },
-                            onNotReady = notReady,
-                        )
-                    }
-                    Screen.HISTORY -> {
-                        val historyViewModel: HistoryViewModel = viewModel(factory = HistoryViewModel.Factory)
-                        val historyState by historyViewModel.uiState.collectAsStateWithLifecycle()
-                        HistoryScreen(
-                            state = historyState,
-                            onSelectMonth = historyViewModel::selectMonth,
-                            onSelectFilter = historyViewModel::selectFilter,
-                            onSelectDate = historyViewModel::selectDate,
-                            onSelectRecord = historyViewModel::selectRecord,
-                            onMoveWeek = historyViewModel::moveWeek,
-                            onMessage = notReady,
-                        )
-                    }
-                    Screen.MATCHING -> {
-                        val matchingViewModel: MatchingViewModel = viewModel(factory = MatchingViewModel.Factory)
-                        val matchingState by matchingViewModel.uiState.collectAsStateWithLifecycle()
-                        MatchingScreen(matchingState, matchingViewModel::accept, matchingViewModel::decline)
-                    }
-                    Screen.DRIVING -> DrivingScreen(
-                        state = state,
-                        onOpenNavigation = { carpoolViewModel.openNavigation(NaviScreen.MAP) },
-                        onConfirmBoarding = carpoolViewModel::confirmBoarding,
-                        onMarkNoShow = carpoolViewModel::markNoShow,
-                        onStartCarpool = { carpoolViewModel.startGuidance() },
-                        onFinishTrip = carpoolViewModel::finishTrip,
-                        // 운행 종료 후에는 방금 저장한 기록(가장 최근)을 보여준다
-                        onTripDone = { backStack = listOf(Screen.HISTORY) },
-                        panelMode = panelMode,
-                        // 창을 닫으면 Pleos 가 그 자리를 내비로 채운다(moveTaskToBack 은 Pleos 창에서 무시돼 finish 를 쓴다).
-                        // 운행 상태는 앱 범위(AppContainer)에 있어 앱 아이콘으로 다시 열면 주행 화면으로 돌아온다.
-                        onClosePanel = { activity?.finish() },
-                        onRefresh = carpoolViewModel::refreshNavi,
+        Box(Modifier.fillMaxSize()) {
+            Column(
+                Modifier
+                    .fillMaxSize()
+                    .safeDrawingPadding()
+                    .padding(horizontal = 24.dp, vertical = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(20.dp),
+            ) {
+                if (!panelMode) {
+                    TopBar(
+                        selected = shown.tab(),
+                        settingsSelected = shown == Screen.SETTINGS,
+                        canGoBack = canGoBack,
+                        onBack = { backStack = backStack.dropLast(1) },
+                        onHome = { backStack = listOf(Screen.HOME) },
+                        onSelectTab = { tab -> backStack = listOf(tab.screen) },
+                        onOpenSettings = { navigate(Screen.SETTINGS) },
                     )
-                    Screen.SETTINGS -> {
-                        val settingsViewModel: SettingsViewModel = viewModel(factory = SettingsViewModel.Factory)
-                        val settingsState by settingsViewModel.uiState.collectAsStateWithLifecycle()
-                        SettingsScreen(
-                            state = settingsState,
-                            onRecheck = settingsViewModel::recheck,
-                            onDisconnect = settingsViewModel::disconnect,
-                            onOpenDiagnostics = { navigate(Screen.NAVI_POC) },
-                            onNotReady = notReady,
+                }
+                Box(Modifier.weight(1f).fillMaxWidth()) {
+                    when (shown) {
+                        Screen.HOME -> if (!startupDone) {
+                            val startupViewModel: StartupViewModel = viewModel(factory = StartupViewModel.Factory)
+                            val startupState by startupViewModel.uiState.collectAsStateWithLifecycle()
+                            StartupScreen(startupState, onRetry = startupViewModel::start, onFinish = {
+                                startupDone = true
+                                autoStartPending = startupState.done
+                            })
+                        } else {
+                            HomeScreen(
+                                state = state,
+                                autoStart = autoStartPending,
+                                onAutoStartHandled = { autoStartPending = false },
+                                onStartCarpool = { carpoolViewModel.startGuidance { navigate(Screen.DRIVING) } },
+                                onOpenDriving = { navigate(Screen.DRIVING) },
+                                onOpenMatching = { navigate(Screen.MATCHING) },
+                            )
+                        }
+                        Screen.CREW -> {
+                            val crewViewModel: CrewViewModel = viewModel(factory = CrewViewModel.Factory)
+                            val invite by crewViewModel.invite.collectAsStateWithLifecycle()
+                            CrewScreen(
+                                state = state,
+                                invite = invite,
+                                onOpenInvite = crewViewModel::ensureInvite,
+                                onRegenerateInvite = crewViewModel::createInvite,
+                                onOpenHistory = { backStack = listOf(Screen.HISTORY) },
+                                onOpenSettlement = { backStack = listOf(Screen.SETTLEMENT) },
+                                onNotReady = notReady,
+                            )
+                        }
+                        Screen.SETTLEMENT -> {
+                            val settlementViewModel: SettlementViewModel = viewModel(factory = SettlementViewModel.Factory)
+                            val settlementState by settlementViewModel.uiState.collectAsStateWithLifecycle()
+                            // 분담 내역에서 운행을 누르면 운행 기록 탭에서 그 운행을 연다
+                            val historyViewModel: HistoryViewModel = viewModel(factory = HistoryViewModel.Factory)
+                            SettlementScreen(
+                                state = settlementState,
+                                onSelectMonth = settlementViewModel::selectMonth,
+                                onSaveSettings = { settlementViewModel.saveSettings(it, notReady) },
+                                onRequest = { settlementViewModel.requestSettlement(notReady) },
+                                onOpenTrip = { record ->
+                                    historyViewModel.openRecord(record)
+                                    backStack = listOf(Screen.HISTORY)
+                                },
+                                onNotReady = notReady,
+                            )
+                        }
+                        Screen.HISTORY -> {
+                            val historyViewModel: HistoryViewModel = viewModel(factory = HistoryViewModel.Factory)
+                            val historyState by historyViewModel.uiState.collectAsStateWithLifecycle()
+                            HistoryScreen(
+                                state = historyState,
+                                onSelectMonth = historyViewModel::selectMonth,
+                                onSelectFilter = historyViewModel::selectFilter,
+                                onSelectDate = historyViewModel::selectDate,
+                                onSelectRecord = historyViewModel::selectRecord,
+                                onMoveWeek = historyViewModel::moveWeek,
+                                onMessage = notReady,
+                            )
+                        }
+                        Screen.MATCHING -> {
+                            val matchingViewModel: MatchingViewModel = viewModel(factory = MatchingViewModel.Factory)
+                            val matchingState by matchingViewModel.uiState.collectAsStateWithLifecycle()
+                            MatchingScreen(matchingState, matchingViewModel::accept, matchingViewModel::decline)
+                        }
+                        Screen.DRIVING -> DrivingScreen(
+                            state = state,
+                            onOpenNavigation = { carpoolViewModel.openNavigation(NaviScreen.MAP) },
+                            onConfirmBoarding = carpoolViewModel::confirmBoarding,
+                            onMarkNoShow = carpoolViewModel::markNoShow,
+                            onStartCarpool = { carpoolViewModel.startGuidance() },
+                            onFinishTrip = carpoolViewModel::finishTrip,
+                            // 운행 종료 후에는 방금 저장한 기록(가장 최근)을 보여준다
+                            onTripDone = { backStack = listOf(Screen.HISTORY) },
+                            panelMode = panelMode,
+                            // 창을 닫으면 Pleos 가 그 자리를 내비로 채운다(moveTaskToBack 은 Pleos 창에서 무시돼 finish 를 쓴다).
+                            // 운행 상태는 앱 범위(AppContainer)에 있어 앱 아이콘으로 다시 열면 주행 화면으로 돌아온다.
+                            onClosePanel = { activity?.finish() },
+                            onRefresh = carpoolViewModel::refreshNavi,
                         )
-                    }
-                    Screen.NAVI_POC -> {
-                        val pocViewModel: NaviPocViewModel = viewModel(factory = NaviPocViewModel.Factory)
-                        val pocState by pocViewModel.uiState.collectAsStateWithLifecycle()
-                        NaviPocScreen(pocState, pocViewModel)
+                        Screen.SETTINGS -> {
+                            val settingsViewModel: SettingsViewModel = viewModel(factory = SettingsViewModel.Factory)
+                            val settingsState by settingsViewModel.uiState.collectAsStateWithLifecycle()
+                            SettingsScreen(
+                                state = settingsState,
+                                onRecheck = settingsViewModel::recheck,
+                                onDisconnect = settingsViewModel::disconnect,
+                                onOpenDiagnostics = { navigate(Screen.NAVI_POC) },
+                                onNotReady = notReady,
+                            )
+                        }
+                        Screen.NAVI_POC -> {
+                            val pocViewModel: NaviPocViewModel = viewModel(factory = NaviPocViewModel.Factory)
+                            val pocState by pocViewModel.uiState.collectAsStateWithLifecycle()
+                            NaviPocScreen(pocState, pocViewModel)
+                        }
                     }
                 }
             }
+            // 화면 배치와 상관없이 위에 떠서 잠깐 보였다 사라진다
+            MessageToast(state.message, carpoolViewModel::dismissMessage)
         }
     }
 }
@@ -324,18 +332,34 @@ private fun SquareButton(onClick: () -> Unit, selected: Boolean, icon: @Composab
     }
 }
 
+/**
+ * 안내 문구 토스트: 화면 아래쪽 가운데에 떠서 잠깐 보였다 사라진다(배치를 밀지 않음).
+ * Pleos 에서는 시스템 Toast 가 보이지 않아(SystemUI 가 사용자 0 에서 받아 숨김) 앱 안에 직접 그린다.
+ */
 @Composable
-private fun MessageBanner(message: String, onDismiss: () -> Unit) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .background(DsColors.Surface, MaterialTheme.shapes.large)
-            .padding(horizontal = 24.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
+private fun BoxScope.MessageToast(message: String?, onShown: () -> Unit) {
+    // 사라지는 동안에도 글자가 남도록 마지막 문구를 들고 있는다
+    var shownText by remember { mutableStateOf("") }
+    LaunchedEffect(message) {
+        if (message == null) return@LaunchedEffect
+        shownText = message
+        delay(if (message.length > 30) 3_500 else 2_000)
+        onShown()
+    }
+    AnimatedVisibility(
+        visible = message != null,
+        enter = fadeIn(),
+        exit = fadeOut(),
+        modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 48.dp, start = 24.dp, end = 24.dp),
     ) {
-        Text(message, style = MaterialTheme.typography.bodyLarge, color = DsColors.Warning, modifier = Modifier.weight(1f))
-        TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = TouchTargetHeight)) {
-            Text("확인", style = MaterialTheme.typography.labelLarge)
-        }
+        Text(
+            shownText,
+            style = MaterialTheme.typography.bodyLarge,
+            color = DsColors.Surface,
+            modifier = Modifier
+                .widthIn(max = 900.dp)
+                .background(DsColors.Dark.copy(alpha = 0.92f), RoundedCornerShape(50))
+                .padding(horizontal = 36.dp, vertical = 20.dp),
+        )
     }
 }
