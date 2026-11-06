@@ -123,6 +123,11 @@ class HistoryViewModel(
         selection.update { it.copy(date = record.date, recordId = record.id) }
     }
 
+    /** 다른 화면(정산 분담 내역)에서 운행 하나를 바로 연다: 그 달·전체 필터로 바꾸고 고른다 */
+    fun openRecord(record: TripRecord) {
+        selection.value = Selection(month = YearMonth.from(record.date), date = record.date, recordId = record.id)
+    }
+
     /** 한 주 앞/뒤로. 그 주에 기록이 없으면 날짜만 옮긴다. */
     fun moveWeek(weeks: Long) {
         val date = uiState.value.selectedDate ?: return

@@ -132,7 +132,7 @@ fun SettingRow(
 
 /** 큰 회색 타일 버튼 (크루 정보 수정 › …) */
 @Composable
-fun ActionTile(title: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun ActionTile(title: String, onClick: () -> Unit, modifier: Modifier = Modifier, subtitle: String? = null) {
     Column(
         modifier
             .clip(RoundedCornerShape(16.dp))
@@ -142,6 +142,9 @@ fun ActionTile(title: String, onClick: () -> Unit, modifier: Modifier = Modifier
             .padding(horizontal = 20.dp, vertical = 16.dp),
     ) {
         Text(title, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        subtitle?.let {
+            Text(it, style = MaterialTheme.typography.bodySmall, color = DsColors.OnSurfaceMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
         Spacer(Modifier.height(12.dp))
         ChevronIcon(Modifier.size(28.dp).align(Alignment.End), color = DsColors.OnSurface)
     }

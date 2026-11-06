@@ -1,5 +1,6 @@
 package com.paircar.data.mock
 
+import com.paircar.domain.model.ConsentStatus
 import com.paircar.domain.model.EfficiencySource
 import com.paircar.domain.model.MemberRides
 import com.paircar.domain.model.MonthlySettlement
@@ -39,6 +40,7 @@ object MockSettlementData {
                 headcount = 2,
                 detourKmPerRide = 3.0,
                 payment = PaymentStatus.PAID,
+                consent = ConsentStatus.AGREED,
             ),
             MemberRides(name = "한민서", rides = 0, sharedKm = 0.0, headcount = 2, detourKmPerRide = 0.0),
         ),

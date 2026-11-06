@@ -5,6 +5,8 @@ import com.paircar.BuildConfig
 import com.paircar.core.notification.PickupNotifier
 import com.paircar.data.local.LocalTripRecordRepository
 import com.paircar.data.local.PrefsTripStores
+import com.paircar.data.local.KeystoreAccountCipher
+import com.paircar.data.local.PrefsSettlementSettingsStore
 import com.paircar.data.mock.MockCarpoolRepository
 import com.paircar.data.mock.MockSettlementRepository
 import com.paircar.data.mock.MockTripHistory
@@ -14,6 +16,7 @@ import com.paircar.domain.repository.CarpoolRepository
 import com.paircar.domain.repository.DrivingStateRepository
 import com.paircar.domain.repository.NaviRepository
 import com.paircar.domain.repository.SettlementRepository
+import com.paircar.domain.repository.SettlementSettingsStore
 import com.paircar.domain.repository.TripRecordRepository
 import com.paircar.domain.repository.VehicleEnergyRepository
 import com.paircar.domain.usecase.ApplyNaviEventUseCase
@@ -46,6 +49,8 @@ class AppContainer(context: Context) {
 
     // 정산 서버 확정 후 교체
     val settlementRepository: SettlementRepository = MockSettlementRepository()
+
+    val settlementSettingsStore: SettlementSettingsStore = PrefsSettlementSettingsStore(context, KeystoreAccountCipher())
 
     // 끝난 운행은 기기에 저장한다. 지난 기록(Mock)은 화면 개발용으로 함께 보여준다.
     val tripRecordRepository: TripRecordRepository = LocalTripRecordRepository(

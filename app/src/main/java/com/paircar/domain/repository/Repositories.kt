@@ -18,6 +18,8 @@ import com.paircar.domain.model.NaviProvider
 import com.paircar.domain.model.NaviScreen
 import com.paircar.domain.model.Place
 import com.paircar.domain.model.RouteRequest
+import com.paircar.domain.model.SettlementRequest
+import com.paircar.domain.model.SettlementSettings
 import com.paircar.domain.model.TripRecord
 import com.paircar.domain.model.TripSession
 import com.paircar.domain.model.VehicleEnergy
@@ -43,6 +45,18 @@ interface CarpoolRepository {
 interface SettlementRepository {
     /** 정산 내역이 있는 달, 최근 달이 먼저 */
     val settlements: StateFlow<List<MonthlySettlement>>
+}
+
+/**
+ * 운전자가 정한 정산 설정(수취 계좌·비용 기준·단가)과 정산 요청 기록.
+ * 정산 서버가 없어 기기에 둔다. 계좌번호는 암호화해 저장한다.
+ */
+interface SettlementSettingsStore {
+    val settings: StateFlow<SettlementSettings>
+    val requests: StateFlow<List<SettlementRequest>>
+
+    suspend fun saveSettings(settings: SettlementSettings)
+    suspend fun saveRequest(request: SettlementRequest)
 }
 
 /** 끝난 운행 기록. 정산 서버가 없어 기기에 저장한다. */

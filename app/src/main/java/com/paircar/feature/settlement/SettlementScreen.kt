@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -49,7 +48,6 @@ import com.paircar.core.ui.components.InfoIcon
 import com.paircar.core.ui.components.InitialAvatar
 import com.paircar.core.ui.components.ModalTitle
 import com.paircar.core.ui.components.Panel
-import com.paircar.core.ui.components.PlusIcon
 import com.paircar.core.ui.components.PrimaryActionButton
 import com.paircar.core.ui.components.ScrollColumn
 import com.paircar.core.ui.components.SectionHeader
@@ -60,6 +58,8 @@ import com.paircar.domain.model.EfficiencySource
 import com.paircar.domain.model.MonthlySettlement
 import com.paircar.domain.model.PaymentStatus
 import com.paircar.domain.model.SettlementReceipt
+import com.paircar.domain.model.SettlementSettings
+import com.paircar.domain.model.TripRecord
 import java.text.NumberFormat
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
@@ -68,15 +68,19 @@ import java.util.Locale
 private sealed interface SettlementModal {
     data object None : SettlementModal
     data class Receipt(val name: String) : SettlementModal
-    data object Policy : SettlementModal
+    data object Settings : SettlementModal
+    data object Breakdown : SettlementModal
+    data object Progress : SettlementModal
 }
 
-/** 월별 정산: 총 정산 금액, 멤버별 현황, 고른 멤버의 영수증·계좌 */
+/** 월별 정산: 총 정산 금액, 멤버별 현황, 고른 멤버의 영수증·계좌, 설정·분담 내역·진행 관리 */
 @Composable
 fun SettlementScreen(
     state: SettlementUiState,
     onSelectMonth: (YearMonth) -> Unit,
-    onOpenHistory: () -> Unit,
+    onSaveSettings: (SettlementSettings) -> Unit,
+    onRequest: () -> Unit,
+    onOpenTrip: (TripRecord) -> Unit,
     onNotReady: (String) -> Unit,
 ) {
     val settlement = state.settlement
@@ -100,8 +104,7 @@ fun SettlementScreen(
                 onSelectMonth = onSelectMonth,
                 onSelectMember = { selectedName = it },
                 onOpenReceipt = { modal = SettlementModal.Receipt(it) },
-                onOpenPolicy = { modal = SettlementModal.Policy },
-                onOpenHistory = onOpenHistory,
+                onOpen = { modal = it },
                 onNotReady = onNotReady,
                 fillHeight = fillHeight,
                 modifier = modifier,
@@ -112,7 +115,7 @@ fun SettlementScreen(
                 settlement = settlement,
                 receipt = selected,
                 onOpenReceipt = { modal = SettlementModal.Receipt(selected.member.name) },
-                onRegisterAccount = { onNotReady("수취 계좌 등록은 다음 단계에서 제공돼요") },
+                onRegisterAccount = { modal = SettlementModal.Settings },
                 fillHeight = fillHeight,
                 modifier = modifier,
             )
@@ -129,12 +132,36 @@ fun SettlementScreen(
             }
         }
 
+        val close = { modal = SettlementModal.None }
         when (val shown = modal) {
             is SettlementModal.Receipt -> {
                 val receipt = settlement.receipts.first { it.member.name == shown.name }
-                ReceiptModal(settlement, receipt) { modal = SettlementModal.None }
+                ReceiptModal(settlement, receipt, close)
             }
-            SettlementModal.Policy -> PolicyModal(settlement) { modal = SettlementModal.None }
+            SettlementModal.Settings -> SettingsModal(
+                settlement = settlement,
+                settings = state.settings,
+                vehicleEfficiency = state.vehicleEfficiency,
+                onSave = {
+                    onSaveSettings(it)
+                    close()
+                },
+                onClose = close,
+            )
+            SettlementModal.Breakdown -> BreakdownModal(
+                settlement = settlement,
+                records = state.carpoolRecords,
+                initialMember = selectedName,
+                onOpenTrip = onOpenTrip,
+                onClose = close,
+            )
+            SettlementModal.Progress -> ProgressModal(
+                settlement = settlement,
+                initialMember = selectedName,
+                onRequest = onRequest,
+                onOpenSettings = { modal = SettlementModal.Settings },
+                onClose = close,
+            )
             SettlementModal.None -> Unit
         }
     }
@@ -165,8 +192,7 @@ private fun SummaryCard(
     onSelectMonth: (YearMonth) -> Unit,
     onSelectMember: (String) -> Unit,
     onOpenReceipt: (String) -> Unit,
-    onOpenPolicy: () -> Unit,
-    onOpenHistory: () -> Unit,
+    onOpen: (SettlementModal) -> Unit,
     onNotReady: (String) -> Unit,
     fillHeight: Boolean,
     modifier: Modifier,
@@ -186,22 +212,7 @@ private fun SummaryCard(
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 MonthPicker(settlement.month, months, onSelectMonth)
-                Text(
-                    settlement.month.period(),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = DsColors.OnSurfaceMuted,
-                    modifier = Modifier.weight(1f),
-                )
-                Box(
-                    Modifier
-                        .size(56.dp)
-                        .clip(CircleShape)
-                        .background(DsColors.Dark)
-                        .clickable { onNotReady("정산 항목 추가는 다음 단계에서 제공돼요") },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    PlusIcon(Modifier.size(28.dp))
-                }
+                Text(settlement.month.period(), style = MaterialTheme.typography.bodySmall, color = DsColors.OnSurfaceMuted)
             }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(24.dp)) {
                 Text("총 정산 금액", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
@@ -242,9 +253,9 @@ private fun SummaryCard(
             if (fillHeight) Spacer(Modifier.weight(1f))
             HorizontalDivider(Modifier.padding(top = 12.dp, bottom = 24.dp), color = DsColors.Divider)
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                ActionTile("정산 정보 입력", { onNotReady("전비·충전 단가 입력은 다음 단계에서 제공돼요") }, Modifier.weight(1f))
-                ActionTile("운행 내역", onOpenHistory, Modifier.weight(1f))
-                ActionTile("정산 기준 확인", onOpenPolicy, Modifier.weight(1f))
+                ActionTile("정산 정보 설정", { onOpen(SettlementModal.Settings) }, Modifier.weight(1f), subtitle = "계좌 · 비용 기준")
+                ActionTile("분담 내역 확인", { onOpen(SettlementModal.Breakdown) }, Modifier.weight(1f), subtitle = "운행별 계산 근거")
+                ActionTile("정산 진행 관리", { onOpen(SettlementModal.Progress) }, Modifier.weight(1f), subtitle = "동의 · 요청 · 입금")
             }
         }
     }
@@ -296,7 +307,7 @@ private fun MemberRow(receipt: SettlementReceipt, selected: Boolean, onSelect: (
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(member.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                if (!member.isExcluded) GrayChip(if (member.payment == PaymentStatus.PAID) "입금 완료" else "입금 미확인")
+                if (!member.isExcluded) GrayChip(member.payment.label())
             }
             Text(
                 if (member.isExcluded) "탑승 이력 없음 · 정산 제외" else "${member.rides}회 탑승 · 실비 분담",
@@ -336,9 +347,7 @@ private fun ReceiptPanel(
 ) {
     Panel(modifier) {
         SectionHeader("영수증 · 계좌")
-        AmountRow("충전비", "${receipt.chargeWon.won()}원")
-        AmountRow("통행료", "${receipt.tollWon.won()}원")
-        AmountRow("${settlement.policy.roundUpUnit}원 단위 올림", "+${receipt.roundingWon.won()}원")
+        CostLines(listOf(receipt), settlement)
         HorizontalDivider(color = DsColors.Divider)
         Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("최종 금액", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
@@ -351,7 +360,7 @@ private fun ReceiptPanel(
         AmountRow("받는 사람", settlement.receiverName)
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text("수취 계좌", style = MaterialTheme.typography.bodyMedium, color = DsColors.OnSurfaceMuted, modifier = Modifier.weight(1f))
-            settlement.receiverAccount?.let { Text(it, style = MaterialTheme.typography.labelMedium) } ?: GrayChip("! 수취 계좌 미등록")
+            settlement.receiverAccount?.let { Text(it.masked, style = MaterialTheme.typography.labelMedium) } ?: GrayChip("ⓘ 수취 계좌 미등록")
         }
         Text(
             "실제 송금은 은행앱에서 진행해요.",
@@ -371,8 +380,18 @@ private fun ReceiptPanel(
     }
 }
 
+/** 충전비·통행료·주차비·올림 줄. 비용 기준에서 뺀 항목은 보이지 않는다 */
 @Composable
-private fun AmountRow(label: String, value: String) {
+internal fun CostLines(receipts: List<SettlementReceipt>, settlement: MonthlySettlement) {
+    val rules = settlement.policy.rules
+    if (rules.includeCharge) AmountRow("충전비", "${receipts.sumOf { it.chargeWon }.won()}원")
+    if (rules.includeToll) AmountRow("통행료", "${receipts.sumOf { it.tollWon }.won()}원")
+    if (rules.includeParking) AmountRow("주차비", "${receipts.sumOf { it.parkingWon }.won()}원")
+    if (rules.roundUp) AmountRow("${settlement.policy.roundUpUnit}원 단위 올림", "+${receipts.sumOf { it.roundingWon }.won()}원")
+}
+
+@Composable
+internal fun AmountRow(label: String, value: String) {
     Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(label, style = MaterialTheme.typography.bodyMedium, color = DsColors.OnSurfaceMuted, modifier = Modifier.weight(1f))
         Text(value, style = MaterialTheme.typography.labelLarge)
@@ -398,17 +417,20 @@ private fun BoxScope.ReceiptModal(
             "${"%.1f".format(member.detourKmPerRide)}km × ${member.rides}일 = ${receipt.detourKm.km()}km",
         )
         AmountRow("부담 거리", "${receipt.burdenKm.km()}km")
-        AmountRow(
-            "전비(${policy.efficiencySource.label()}) / 충전 단가",
-            "${policy.efficiencyKmPerKwh.efficiency()}km/kWh · ${policy.chargePricePerKwh.toLong().won()}원/kWh",
-        )
-        AmountRow("충전비 산출", "${receipt.chargeWon.won()}원 (반올림 표기)")
-        AmountRow("통행료 · 별도 배분", "${receipt.tollWon.won()}원")
+        if (policy.rules.includeCharge) {
+            AmountRow(
+                "전비(${policy.efficiencySource.label()}) / 충전 단가",
+                "${policy.efficiencyKmPerKwh.efficiency()}km/kWh · ${policy.chargePricePerKwh.toLong().won()}원/kWh",
+            )
+            AmountRow("충전비 산출", "${receipt.chargeWon.won()}원 (반올림 표기)")
+        }
+        if (policy.rules.includeToll) AmountRow("통행료 · 별도 배분", "${receipt.tollWon.won()}원")
+        if (policy.rules.includeParking) AmountRow("주차비 · 별도 배분", "${receipt.parkingWon.won()}원")
         HorizontalDivider(color = DsColors.Divider)
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text("최종 부담액", style = MaterialTheme.typography.titleMedium)
-                Text("${policy.roundUpUnit}원 단위 올림", style = MaterialTheme.typography.bodySmall)
+                if (policy.rules.roundUp) Text("${policy.roundUpUnit}원 단위 올림", style = MaterialTheme.typography.bodySmall)
             }
             Text("${receipt.totalWon.won()}원", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold))
         }
@@ -419,46 +441,19 @@ private fun BoxScope.ReceiptModal(
     }
 }
 
-@Composable
-private fun BoxScope.PolicyModal(settlement: MonthlySettlement, onClose: () -> Unit) {
-    val policy = settlement.policy
-    InScreenModal(onDismiss = onClose, maxWidth = 760.dp) {
-        ModalTitle("정산 기준", onClose)
-        PolicyLine("부담 거리", "함께 탄 거리를 운전자 포함 인원으로 나누고, 그 동승자를 태우느라 더 돈 우회거리를 더해요.")
-        PolicyLine(
-            "충전비",
-            "부담 거리 ÷ 전비(${policy.efficiencyKmPerKwh.efficiency()}km/kWh) × 충전 단가(${policy.chargePricePerKwh.toLong().won()}원/kWh)",
-        )
-        PolicyLine("통행료", "탄 구간에 있는 통행료만 따로 나눠요.")
-        PolicyLine("최종 금액", "송금하기 쉽게 ${policy.roundUpUnit}원 단위로 올려요.")
-        PolicyLine("정산 제외", "그 달에 한 번도 타지 않은 멤버는 정산하지 않아요.")
-        Text(
-            when (policy.efficiencySource) {
-                EfficiencySource.MANUAL -> "이 차량에서 전비를 읽지 못해 [정산 정보 입력]에서 정한 전비를 써요. 충전 단가도 입력값이에요."
-                else -> "전비는 차량에서 읽은 ${policy.efficiencySource.label()} 전비를 써요. 충전 단가는 [정산 정보 입력]에서 정한 값이에요."
-            },
-            style = MaterialTheme.typography.bodySmall,
-            color = DsColors.OnSurfaceMuted,
-        )
-    }
-}
-
-private fun EfficiencySource.label(): String = when (this) {
+internal fun EfficiencySource.label(): String = when (this) {
     EfficiencySource.VEHICLE_CUMULATIVE -> "차량 누적"
     EfficiencySource.VEHICLE_SINCE_CHARGE -> "차량 충전 후"
     EfficiencySource.MANUAL -> "입력값"
 }
 
-/** 5.5 → "5.5", 5.4321 → "5.4" */
-private fun Double.efficiency(): String = "%.1f".format(this)
-
-@Composable
-private fun PolicyLine(title: String, body: String) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(title, style = MaterialTheme.typography.labelLarge)
-        Text(body, style = MaterialTheme.typography.bodyMedium, color = DsColors.OnSurfaceMuted)
-    }
+internal fun PaymentStatus.label(): String = when (this) {
+    PaymentStatus.PAID -> "입금 완료"
+    PaymentStatus.UNCONFIRMED -> "입금 미확인"
 }
+
+/** 5.5 → "5.5", 5.4321 → "5.4" */
+internal fun Double.efficiency(): String = "%.1f".format(this)
 
 private fun SettlementReceipt.paymentNote(settlement: MonthlySettlement): String = when {
     member.payment == PaymentStatus.PAID -> "입금 완료"
@@ -469,10 +464,10 @@ private fun SettlementReceipt.paymentNote(settlement: MonthlySettlement): String
 private val MonthFormat = DateTimeFormatter.ofPattern("yyyy년 M월")
 private val WonFormat = NumberFormat.getIntegerInstance(Locale.KOREA)
 
-private fun Long.won(): String = WonFormat.format(this)
+internal fun Long.won(): String = WonFormat.format(this)
 
 /** 216.0 → "216", 3.5 → "3.5" */
-private fun Double.km(): String = if (this % 1.0 == 0.0) toLong().toString() else "%.1f".format(this)
+internal fun Double.km(): String = if (this % 1.0 == 0.0) toLong().toString() else "%.1f".format(this)
 
 /** 2026.10.1 ~ 10.31 */
 private fun YearMonth.period(): String = "$year.$monthValue.1 ~ $monthValue.${lengthOfMonth()}"

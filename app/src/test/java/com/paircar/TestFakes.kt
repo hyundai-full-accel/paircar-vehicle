@@ -42,3 +42,16 @@ class FakeRoutes(private val directFails: Boolean = false) : RoutePreviewReposit
         )
     }
 }
+
+class MemorySettlementSettings(
+    initial: com.paircar.domain.model.SettlementSettings = com.paircar.domain.model.SettlementSettings(),
+) : com.paircar.domain.repository.SettlementSettingsStore {
+    override val settings = MutableStateFlow(initial)
+    override val requests = MutableStateFlow<List<com.paircar.domain.model.SettlementRequest>>(emptyList())
+    override suspend fun saveSettings(settings: com.paircar.domain.model.SettlementSettings) {
+        this.settings.value = settings
+    }
+    override suspend fun saveRequest(request: com.paircar.domain.model.SettlementRequest) {
+        requests.value = requests.value.filterNot { it.month == request.month } + request
+    }
+}
