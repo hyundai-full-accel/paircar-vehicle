@@ -1,11 +1,14 @@
 package com.paircar.data.mock
 
+import com.paircar.data.local.CrewInfoStore
 import com.paircar.data.local.SavedTripState
 import com.paircar.data.local.TripStateStore
+import com.paircar.domain.model.Attendance
 import com.paircar.domain.model.BoardingStatus
 import com.paircar.domain.model.CarpoolStatus
 import com.paircar.domain.model.CarpoolTrip
 import com.paircar.domain.model.Crew
+import com.paircar.domain.model.CrewInfo
 import com.paircar.domain.model.CrewInvite
 import com.paircar.domain.model.InviteLinks
 import com.paircar.domain.model.MatchStatus
@@ -27,18 +30,23 @@ class MockCarpoolRepository(
     private val now: () -> LocalDateTime = LocalDateTime::now,
     /** 진행 상태를 기기에 둔다. 앱 프로세스가 끝나도(Pleos 창 닫기) 운행이 이어진다. */
     private val stateStore: TripStateStore? = null,
+    /** 운전자가 바꾼 크루 이름·출발 시각·요일 */
+    private val crewInfoStore: CrewInfoStore? = null,
 ) : CarpoolRepository {
 
-    private val trip = MutableStateFlow<CarpoolTrip?>(restore(tripFactory()))
+    private val savedInfo = crewInfoStore?.load()
+
+    private val trip = MutableStateFlow<CarpoolTrip?>(restore(scheduled(tripFactory())))
     override val todayTrip: StateFlow<CarpoolTrip?> = trip.asStateFlow()
 
-    override val crew: StateFlow<Crew?> = MutableStateFlow(crew).asStateFlow()
+    private val _crew = MutableStateFlow<Crew?>(savedInfo?.let { crew.copy(name = it.name, days = it.days) } ?: crew)
+    override val crew: StateFlow<Crew?> = _crew.asStateFlow()
 
     private val random = SecureRandom()
 
     override suspend fun refresh() {
         delay(latencyMillis)
-        if (trip.value == null) trip.value = tripFactory()
+        if (trip.value == null) trip.value = scheduled(tripFactory())
     }
 
     override suspend fun updateMatchStatus(passengerId: String, status: MatchStatus) {
@@ -62,6 +70,22 @@ class MockCarpoolRepository(
         persist()
     }
 
+    override suspend fun updateAttendance(passengerId: String, attendance: Attendance) {
+        delay(latencyMillis)
+        updatePassenger(passengerId) { it.copy(attendance = attendance) }
+    }
+
+    /** 출발 시각은 아직 출발 전인 오늘 운행에만 반영한다 (진행 중인 운행의 시각은 바꾸지 않는다) */
+    override suspend fun updateCrewInfo(info: CrewInfo) {
+        delay(latencyMillis)
+        _crew.update { it?.copy(name = info.name, days = info.days) }
+        trip.update { current ->
+            if (current?.status == CarpoolStatus.SCHEDULED) current.rescheduled(info.departureTime) else current
+        }
+        crewInfoStore?.save(info)
+        persist()
+    }
+
     /** 서버가 생기면 서버가 코드를 발급·검증한다. Mock 은 24시간짜리 코드를 만들기만 한다. */
     override suspend fun createInvite(): CrewInvite {
         delay(latencyMillis)
@@ -77,6 +101,8 @@ class MockCarpoolRepository(
         }
         persist()
     }
+
+    private fun scheduled(fresh: CarpoolTrip): CarpoolTrip = savedInfo?.let { fresh.rescheduled(it.departureTime) } ?: fresh
 
     private fun restore(fresh: CarpoolTrip): CarpoolTrip = stateStore?.load()?.applyTo(fresh) ?: fresh
 

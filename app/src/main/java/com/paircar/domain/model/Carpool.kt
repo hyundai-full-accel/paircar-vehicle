@@ -113,4 +113,15 @@ data class CarpoolTrip(
 
     /** 경유지 없이 출발지 → 목적지 (경로 비교용) */
     fun directStops(): List<GeoPoint> = listOf(origin.point, destination.point)
+
+    /** 출발 시각을 옮기면 도착·픽업 예정 시각도 같은 만큼 옮긴다 */
+    fun rescheduled(departure: LocalTime): CarpoolTrip {
+        val shift = Duration.between(departureTime, departure)
+        if (shift.isZero) return this
+        return copy(
+            departureTime = departure,
+            estimatedArrivalTime = estimatedArrivalTime.plus(shift),
+            passengers = passengers.map { it.copy(estimatedPickupTime = it.estimatedPickupTime.plus(shift)) },
+        )
+    }
 }

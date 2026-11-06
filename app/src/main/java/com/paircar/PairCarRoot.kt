@@ -164,13 +164,16 @@ fun PairCarRoot() {
                         Screen.CREW -> {
                             val crewViewModel: CrewViewModel = viewModel(factory = CrewViewModel.Factory)
                             val invite by crewViewModel.invite.collectAsStateWithLifecycle()
+                            val crewSettlement by crewViewModel.settlement.collectAsStateWithLifecycle()
                             CrewScreen(
                                 state = state,
                                 invite = invite,
                                 onOpenInvite = crewViewModel::ensureInvite,
                                 onRegenerateInvite = crewViewModel::createInvite,
-                                onOpenHistory = { backStack = listOf(Screen.HISTORY) },
-                                onOpenSettlement = { backStack = listOf(Screen.SETTLEMENT) },
+                                settlement = crewSettlement,
+                                onSaveCrewInfo = { crewViewModel.saveCrewInfo(it, notReady) },
+                                onSaveAttendance = { changes -> state.trip?.let { crewViewModel.saveAttendance(it, changes, notReady) } },
+                                onSaveRules = { crewViewModel.saveRules(it, notReady) },
                                 onNotReady = notReady,
                             )
                         }

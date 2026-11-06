@@ -1,12 +1,15 @@
 package com.paircar.data.local
 
 import android.content.Context
+import com.paircar.domain.model.Attendance
 import com.paircar.domain.model.BoardingStatus
 import com.paircar.domain.model.CarpoolStatus
 import com.paircar.domain.model.CarpoolTrip
+import com.paircar.domain.model.CrewInfo
 import com.paircar.domain.model.TripSession
 import com.paircar.domain.repository.TripSessionStore
 import org.json.JSONObject
+import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
@@ -17,6 +20,8 @@ data class SavedTripState(
     val status: CarpoolStatus,
     val boarding: Map<String, BoardingStatus>,
     val boardedAt: Map<String, LocalTime>,
+    /** 운전자가 [탑승·픽업 관리]에서 바꾼 오늘 참석 여부 */
+    val attendance: Map<String, Attendance> = emptyMap(),
 ) {
     fun applyTo(trip: CarpoolTrip): CarpoolTrip =
         if (trip.date != date) {
@@ -25,7 +30,11 @@ data class SavedTripState(
             trip.copy(
                 status = status,
                 passengers = trip.passengers.map { p ->
-                    p.copy(boardingStatus = boarding[p.id] ?: p.boardingStatus, boardedAt = boardedAt[p.id] ?: p.boardedAt)
+                    p.copy(
+                        boardingStatus = boarding[p.id] ?: p.boardingStatus,
+                        boardedAt = boardedAt[p.id] ?: p.boardedAt,
+                        attendance = attendance[p.id] ?: p.attendance,
+                    )
                 },
             )
         }
@@ -36,6 +45,7 @@ data class SavedTripState(
             status = trip.status,
             boarding = trip.passengers.associate { it.id to it.boardingStatus },
             boardedAt = trip.passengers.mapNotNull { p -> p.boardedAt?.let { p.id to it } }.toMap(),
+            attendance = trip.passengers.associate { it.id to it.attendance },
         )
     }
 }
@@ -62,6 +72,9 @@ class PrefsTripStores(context: Context) : TripStateStore, TripSessionStore {
             status = CarpoolStatus.valueOf(json.getString("status")),
             boarding = boarding.keys().asSequence().associateWith { BoardingStatus.valueOf(boarding.getString(it)) },
             boardedAt = boardedAt.keys().asSequence().associateWith { LocalTime.parse(boardedAt.getString(it)) },
+            attendance = json.optJSONObject("attendance")?.let { a ->
+                a.keys().asSequence().associateWith { Attendance.valueOf(a.getString(it)) }
+            }.orEmpty(),
         )
     }.getOrNull()
 
@@ -71,6 +84,7 @@ class PrefsTripStores(context: Context) : TripStateStore, TripSessionStore {
             .put("status", state.status.name)
             .put("boarding", JSONObject(state.boarding.mapValues { it.value.name }))
             .put("boardedAt", JSONObject(state.boardedAt.mapValues { it.value.toString() }))
+            .put("attendance", JSONObject(state.attendance.mapValues { it.value.name }))
         prefs.edit().putString(KEY_STATE, json.toString()).apply()
     }
 
@@ -98,5 +112,39 @@ class PrefsTripStores(context: Context) : TripStateStore, TripSessionStore {
         const val KEY_STATE = "state"
         const val KEY_STARTED_AT = "session_started_at"
         const val KEY_START_ODOMETER = "session_start_odometer"
+    }
+}
+
+/** 운전자가 바꾼 크루 정보. 서버가 생기면 서버가 이 값을 가진다. */
+interface CrewInfoStore {
+    fun load(): CrewInfo?
+    fun save(info: CrewInfo)
+}
+
+class PrefsCrewInfoStore(context: Context) : CrewInfoStore {
+
+    private val prefs = context.getSharedPreferences("crew_info", Context.MODE_PRIVATE)
+
+    override fun load(): CrewInfo? = runCatching {
+        val name = prefs.getString(KEY_NAME, null) ?: return null
+        CrewInfo(
+            name = name,
+            departureTime = LocalTime.parse(prefs.getString(KEY_DEPARTURE, null)),
+            days = prefs.getString(KEY_DAYS, null).orEmpty().split(",").filter { it.isNotBlank() }.map { DayOfWeek.valueOf(it) }.toSet(),
+        )
+    }.getOrNull()
+
+    override fun save(info: CrewInfo) {
+        prefs.edit()
+            .putString(KEY_NAME, info.name)
+            .putString(KEY_DEPARTURE, info.departureTime.toString())
+            .putString(KEY_DAYS, info.days.joinToString(",") { it.name })
+            .apply()
+    }
+
+    private companion object {
+        const val KEY_NAME = "name"
+        const val KEY_DEPARTURE = "departure"
+        const val KEY_DAYS = "days"
     }
 }

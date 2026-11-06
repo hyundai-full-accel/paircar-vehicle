@@ -27,7 +27,7 @@ object MockCarpoolData {
         name = "판교 출근 크루",
         // 10월 정산(18회 운행)과 맞도록 10월 초 시작
         startDate = LocalDate.of(2026, 10, 1),
-        weekdays = "월-금",
+        days = Crew.WEEKDAYS,
     )
 
     val origin = Place(

@@ -62,26 +62,31 @@ import com.paircar.core.ui.map.MapInsets
 import com.paircar.core.ui.map.toMapStops
 import com.paircar.core.ui.qr.QrCode
 import com.paircar.core.ui.theme.DsColors
+import com.paircar.domain.model.Attendance
 import com.paircar.domain.model.BoardingStatus
 import com.paircar.domain.model.CarpoolTrip
+import com.paircar.domain.model.CostRules
 import com.paircar.domain.model.Crew
+import com.paircar.domain.model.CrewInfo
 import com.paircar.domain.model.Passenger
 import com.paircar.feature.carpool.CarpoolUiState
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-private enum class CrewModal { NONE, ROUTE_DETAIL, INVITE }
+private enum class CrewModal { NONE, ROUTE_DETAIL, INVITE, INFO, PICKUP, RULES }
 
-/** 내 크루: 크루 일정·멤버, 경로 미리보기, 경로 상세(직접 vs 동승 비교), QR 초대 */
+/** 내 크루: 크루 일정·멤버, 경로 미리보기, 경로 상세(직접 vs 동승 비교), QR 초대, 크루 정보·픽업·정산 기준 관리 */
 @Composable
 fun CrewScreen(
     state: CarpoolUiState,
     invite: InviteUiState,
     onOpenInvite: () -> Unit,
     onRegenerateInvite: () -> Unit,
-    onOpenHistory: () -> Unit,
-    onOpenSettlement: () -> Unit,
+    settlement: CrewSettlementState,
+    onSaveCrewInfo: (CrewInfo) -> Unit,
+    onSaveAttendance: (Map<String, Attendance>) -> Unit,
+    onSaveRules: (CostRules) -> Unit,
     onNotReady: (String) -> Unit,
 ) {
     val trip = state.trip
@@ -98,7 +103,7 @@ fun CrewScreen(
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val crewPanel: @Composable (Modifier) -> Unit = { modifier ->
-            CrewPanel(crew, trip, openInvite, onOpenHistory, onOpenSettlement, onNotReady, modifier)
+            CrewPanel(crew, trip, openInvite, { modal = it }, onNotReady, modifier)
         }
         val routePanel: @Composable (Modifier, Boolean) -> Unit = { modifier, fillMap ->
             RoutePanel(state, trip, fillMap, { modal = CrewModal.ROUTE_DETAIL }, openInvite, modifier)
@@ -118,6 +123,39 @@ fun CrewScreen(
         when (modal) {
             CrewModal.ROUTE_DETAIL -> RouteDetailModal(state, trip, crew) { modal = CrewModal.NONE }
             CrewModal.INVITE -> InviteModal(crew, invite, onRegenerateInvite) { modal = CrewModal.NONE }
+            // 입력 오류는 팝업을 닫지 않고 토스트로 알린다
+            CrewModal.INFO -> CrewInfoModal(
+                crew = crew,
+                trip = trip,
+                onSave = { info ->
+                    CrewViewModel.validateCrewInfo(info)?.let(onNotReady) ?: run {
+                        onSaveCrewInfo(info)
+                        modal = CrewModal.NONE
+                    }
+                },
+                onMessage = onNotReady,
+                onClose = { modal = CrewModal.NONE },
+            )
+            CrewModal.PICKUP -> PickupModal(
+                trip = trip,
+                onSave = { changes ->
+                    CrewViewModel.validateAttendance(trip, changes)?.let(onNotReady) ?: run {
+                        onSaveAttendance(changes)
+                        modal = CrewModal.NONE
+                    }
+                },
+                onClose = { modal = CrewModal.NONE },
+            )
+            CrewModal.RULES -> RulesModal(
+                trip = trip,
+                state = settlement,
+                onSave = {
+                    onSaveRules(it)
+                    modal = CrewModal.NONE
+                },
+                onMessage = onNotReady,
+                onClose = { modal = CrewModal.NONE },
+            )
             CrewModal.NONE -> Unit
         }
     }
@@ -128,8 +166,7 @@ private fun CrewPanel(
     crew: Crew,
     trip: CarpoolTrip,
     onInvite: () -> Unit,
-    onOpenHistory: () -> Unit,
-    onOpenSettlement: () -> Unit,
+    onOpen: (CrewModal) -> Unit,
     onNotReady: (String) -> Unit,
     modifier: Modifier,
 ) {
@@ -172,7 +209,7 @@ private fun CrewPanel(
                 style = MaterialTheme.typography.displayMedium,
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                GrayChip(crew.weekdays)
+                GrayChip(crew.daysLabel)
                 GrayChip("${trip.departureTime.withMeridiem()} 출발")
                 GrayChip("${trip.destination.name} 도착")
             }
@@ -184,9 +221,9 @@ private fun CrewPanel(
         ) {
             HorizontalDivider(color = DsColors.Divider)
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                ActionTile("크루 정보 수정", { onNotReady("크루 정보 수정은 다음 단계에서 제공돼요") }, Modifier.weight(1f))
-                ActionTile("운행 내역 상세", onOpenHistory, Modifier.weight(1f))
-                ActionTile("정산 기준 확인", onOpenSettlement, Modifier.weight(1f))
+                ActionTile("크루 정보 설정", { onOpen(CrewModal.INFO) }, Modifier.weight(1f), subtitle = "이름 · 일정 · 출/도착지")
+                ActionTile("탑승·픽업 관리", { onOpen(CrewModal.PICKUP) }, Modifier.weight(1f), subtitle = "멤버 · 픽업 · 경유지")
+                ActionTile("정산 기준 관리", { onOpen(CrewModal.RULES) }, Modifier.weight(1f), subtitle = "분담 기준 · 동의 현황")
             }
             Column {
                 SectionHeader("크루 멤버") {

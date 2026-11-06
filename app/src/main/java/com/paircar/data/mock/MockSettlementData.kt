@@ -42,7 +42,8 @@ object MockSettlementData {
                 payment = PaymentStatus.PAID,
                 consent = ConsentStatus.AGREED,
             ),
-            MemberRides(name = "한민서", rides = 0, sharedKm = 0.0, headcount = 2, detourKmPerRide = 0.0),
+            // 10월에는 타지 않았지만 정산 기준에는 동의한 크루원
+            MemberRides(name = "한민서", rides = 0, sharedKm = 0.0, headcount = 2, detourKmPerRide = 0.0, consent = ConsentStatus.AGREED),
         ),
     )
 }
