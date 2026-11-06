@@ -12,9 +12,9 @@ enum class TripKind { CARPOOL, SOLO }
 /** 주행 거리를 어디서 구했는지 */
 enum class DistanceSource {
     /** Vehicle SDK Odometer 출발·도착 값의 차이 */
-    ODOMETER,
 
-    /** 주행 거리를 못 읽어 경로 미리보기(OSRM) 거리로 대신함 */
+    /** 주행 거리를 못 읽어 경로    ODOMETER,
+    미리보기(OSRM) 거리로 대신함 */
     ROUTE_ESTIMATE,
 }
 
