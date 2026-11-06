@@ -172,10 +172,17 @@ fun PairCarRoot() {
                     Screen.SETTLEMENT -> {
                         val settlementViewModel: SettlementViewModel = viewModel(factory = SettlementViewModel.Factory)
                         val settlementState by settlementViewModel.uiState.collectAsStateWithLifecycle()
+                        // 분담 내역에서 운행을 누르면 운행 기록 탭에서 그 운행을 연다
+                        val historyViewModel: HistoryViewModel = viewModel(factory = HistoryViewModel.Factory)
                         SettlementScreen(
                             state = settlementState,
                             onSelectMonth = settlementViewModel::selectMonth,
-                            onOpenHistory = { backStack = listOf(Screen.HISTORY) },
+                            onSaveSettings = { settlementViewModel.saveSettings(it, notReady) },
+                            onRequest = { settlementViewModel.requestSettlement(notReady) },
+                            onOpenTrip = { record ->
+                                historyViewModel.openRecord(record)
+                                backStack = listOf(Screen.HISTORY)
+                            },
                             onNotReady = notReady,
                         )
                     }

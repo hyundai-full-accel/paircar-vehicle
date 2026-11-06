@@ -26,6 +26,7 @@ import com.paircar.domain.repository.CarpoolRepository
 import com.paircar.domain.repository.DrivingStateRepository
 import com.paircar.domain.repository.NaviRepository
 import com.paircar.domain.repository.SettlementRepository
+import com.paircar.domain.repository.SettlementSettingsStore
 import com.paircar.domain.repository.VehicleEnergyRepository
 import com.paircar.domain.model.estimateRideWon
 import com.paircar.domain.usecase.CarpoolRouteSync
@@ -74,6 +75,7 @@ class CarpoolViewModel(
     tripRecorder: TripRecorder,
     private val routePreviewRepository: RoutePreviewRepository,
     private val settlementRepository: SettlementRepository,
+    private val settlementSettings: SettlementSettingsStore,
     private val energyRepository: VehicleEnergyRepository,
 ) : ViewModel() {
 
@@ -134,8 +136,11 @@ class CarpoolViewModel(
     private fun estimateShare() {
         viewModelScope.launch {
             val energy = energyRepository.read()
-            combine(carpoolRepository.todayTrip, routePreview, directPreview, sharedPreview, settlementRepository.settlements) { trip, planned, direct, shared, settlements ->
-                val policy = settlements.firstOrNull()?.policy?.withVehicle(energy)
+            // 운전자가 [정산 정보 설정]에서 정한 단가·비용 항목도 반영한다
+            val policies = combine(settlementRepository.settlements, settlementSettings.settings) { settlements, settings ->
+                settlements.firstOrNull()?.policy?.withSettings(settings)?.withVehicle(energy)
+            }
+            combine(carpoolRepository.todayTrip, routePreview, directPreview, sharedPreview, policies) { trip, planned, direct, shared, policy ->
                 val routes = listOfNotNull(planned, direct, shared)
                 if (trip == null || policy == null || routes.size < 3 || routes.any { it.isApproximate }) return@combine null
                 val detourKm = ((planned!!.distanceMeters - direct!!.distanceMeters) / 1000.0).coerceAtLeast(0.0)
@@ -247,6 +252,7 @@ class CarpoolViewModel(
                     container.tripRecorder,
                     container.routePreviewRepository,
                     container.settlementRepository,
+                    container.settlementSettingsStore,
                     container.vehicleEnergyRepository,
                 )
             }
