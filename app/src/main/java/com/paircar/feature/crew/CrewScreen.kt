@@ -36,12 +36,14 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.paircar.R
 import com.paircar.core.ui.components.ActionTile
 import com.paircar.core.ui.components.ChevronIcon
+import com.paircar.core.ui.components.CloseIcon
 import com.paircar.core.ui.components.ExpandedWidthThreshold
 import com.paircar.core.ui.components.GrayChip
 import com.paircar.core.ui.components.InScreenModal
@@ -436,57 +438,78 @@ private fun ExtraRow(label: String, value: String, big: Boolean) {
     }
 }
 
-/** QR 초대: 휴대폰으로 스캔하면 모바일웹 초대 화면으로 연결 (회의 2.4) */
+/**
+ * QR 초대: 휴대폰으로 스캔하면 모바일웹 초대 화면으로 연결 (회의 2.4).
+ * 크기는 시안(2000px 캡처 = 화면 2560px)에서 잰 값: 팝업 폭 727, QR 틀 295.
+ */
 @Composable
 private fun InviteModal(crew: Crew, state: InviteUiState, onRegenerate: () -> Unit, onClose: () -> Unit) {
     Box(Modifier.fillMaxSize()) {
-        InScreenModal(onDismiss = onClose, maxWidth = 640.dp) {
-            ModalTitle("${crew.name} 초대", onClose)
-            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                val invite = state.invite
-                if (invite == null) {
-                    Box(Modifier.size(320.dp), contentAlignment = Alignment.Center) {
-                        if (state.error != null) {
-                            Text(state.error, style = MaterialTheme.typography.bodyLarge, color = DsColors.Danger, textAlign = TextAlign.Center)
-                        } else {
-                            CircularProgressIndicator(Modifier.size(48.dp), color = DsColors.OnSurfaceMuted)
-                        }
-                    }
-                } else {
-                    QrCode(
-                        invite.url,
-                        Modifier
-                            .size(320.dp)
-                            .border(1.dp, DsColors.Divider, RoundedCornerShape(16.dp))
-                            .clip(RoundedCornerShape(16.dp)),
-                    )
+        InScreenModal(onDismiss = onClose, maxWidth = 727.dp) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "${crew.name} 초대",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    modifier = Modifier.weight(1f),
+                )
+                Box(
+                    Modifier.size(48.dp).clip(CircleShape).clickable(onClick = onClose),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CloseIcon(Modifier.size(30.dp))
                 }
             }
-            Text(
-                "꾹 누르면 연결됩니다",
-                style = MaterialTheme.typography.titleLarge,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Text(
-                "휴대폰 카메라로 QR코드를 비춘 뒤, 나타나는 링크를 꾹 누르면 모바일웹 초대 화면이 열려요",
-                style = MaterialTheme.typography.bodyMedium,
-                color = DsColors.OnSurfaceMuted,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            state.invite?.let { invite ->
+            // 흰 틀 안에 QR (시안: 옅은 테두리, 안쪽 여백)
+            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                Box(
+                    Modifier
+                        .size(295.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .border(1.dp, DsColors.Divider, RoundedCornerShape(12.dp))
+                        .background(DsColors.Surface)
+                        // QR 그림 자체에 여백(quiet zone)이 있어 틀 안쪽 여백은 조금만 둔다 (시안: 틀의 약 85%)
+                        .padding(6.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    val invite = state.invite
+                    when {
+                        invite != null -> QrCode(invite.url, Modifier.fillMaxSize())
+                        state.error != null -> Text(
+                            state.error,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = DsColors.Danger,
+                            textAlign = TextAlign.Center,
+                        )
+                        else -> CircularProgressIndicator(Modifier.size(48.dp), color = DsColors.OnSurfaceMuted)
+                    }
+                }
+            }
+            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(
-                    "초대 코드 ${invite.code} · ${invite.expiresAt.format(ExpiryFormat)}까지",
-                    style = MaterialTheme.typography.bodySmall,
+                    "QR코드를 스캔해 크루에 초대하세요",
+                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Text(
+                    "카메라로 QR코드를 스캔한 뒤,\n나타나는 링크를 눌러 크루에 초대할 수 있어요.",
+                    style = MaterialTheme.typography.bodyMedium,
                     color = DsColors.OnSurfaceMuted,
                     textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
+            state.invite?.let { invite ->
+                Text(
+                    "초대 코드 ${invite.code} · 유효시간 ${invite.expiresAt.format(ExpiryFormat)}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                )
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                TonalActionButton("새 QR 만들기", onRegenerate, Modifier.weight(1f), enabled = !state.loading)
-                PrimaryActionButton("닫기", onClose, Modifier.weight(1f))
+                PrimaryActionButton("새 초대 QR 생성", onRegenerate, Modifier.weight(1f), enabled = !state.loading)
+                TonalActionButton("닫기", onClose, Modifier.weight(1f))
             }
         }
     }
