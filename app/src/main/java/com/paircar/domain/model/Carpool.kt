@@ -11,7 +11,24 @@ data class Place(
     val point: GeoPoint,
     /** 내비 POI ID. 서버/검색 연동 전까지는 null(좌표만 사용). */
     val poiId: String? = null,
-)
+) {
+    /**
+     * 주소에서 시·구 단위까지만 남긴 지역 ("경기 성남시 분당구 판교역로" → "경기 성남시 분당구").
+     * 구·군이 있으면 거기까지, 없으면 시까지 자른다.
+     */
+    val area: String
+        get() {
+            val tokens = address.split(' ').filter { it.isNotBlank() }
+            val district = tokens.indexOfFirst { it.endsWith("구") || it.endsWith("군") }
+            val city = tokens.indexOfFirst { it.endsWith("시") }
+            val end = when {
+                district >= 0 -> district
+                city >= 0 -> city
+                else -> minOf(1, tokens.lastIndex)
+            }
+            return tokens.take(end + 1).joinToString(" ")
+        }
+}
 
 data class Driver(
     val id: String,
@@ -39,6 +56,8 @@ data class Passenger(
     val attendance: Attendance = Attendance.ATTENDING,
     /** 픽업 장소가 바뀌었으면 바뀌기 전 장소 (경유지 변경 알림용) */
     val previousPickup: Place? = null,
+    /** 운전자가 탑승 완료를 누른 시각 (운행 기록용) */
+    val boardedAt: LocalTime? = null,
 ) {
     val isAttending: Boolean
         get() = attendance == Attendance.ATTENDING

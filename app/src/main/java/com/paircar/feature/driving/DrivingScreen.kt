@@ -2,6 +2,7 @@ package com.paircar.feature.driving
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -21,6 +22,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -29,8 +34,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.paircar.core.ui.components.CloseIcon
 import com.paircar.core.ui.components.ParkedOnlyNotice
 import com.paircar.core.ui.components.PrimaryActionButton
+import com.paircar.core.ui.components.TonalActionButton
 import com.paircar.core.ui.components.TouchTargetHeight
 import com.paircar.core.ui.components.formatDistance
 import com.paircar.core.ui.components.formatDuration
@@ -53,25 +60,41 @@ import java.time.LocalTime
  * V-06 주행 중 현황. 지도 위에 "다음 경유지까지 남은 거리" 카드 하나와 도착 정보만 크게 띄운다.
  * - 남은 거리/시간: NaviHelper onWayPointInfo / onDestinationInfo (m, 초)
  * - 차량 위치: getCurrentLocationInfo (화면이 보이는 동안 5초 간격 요청)
- * - 주행 중 조작은 "내비 보기" 하나. 탑승 완료는 정차 중에만.
+ * - 주행 중 조작은 "내비 보기" 하나. 탑승 완료·운행 종료는 정차 중에만.
+ * - 운행이 끝나 기록 처리 결과가 있으면 운행 종료 화면([TripEndScreen])을 보여준다.
+ * - 운행 중 좁은 창(내비와 나란히 3분할)에서는 지도 없이 [DrivingPanel] 을 보여준다.
  */
 @Composable
 fun DrivingScreen(
     state: CarpoolUiState,
     onOpenNavigation: () -> Unit,
     onConfirmBoarding: (passengerId: String) -> Unit,
+    onMarkNoShow: (passengerId: String) -> Unit,
     onStartCarpool: () -> Unit,
+    onFinishTrip: () -> Unit,
+    onTripDone: () -> Unit,
+    panelMode: Boolean,
+    onClosePanel: () -> Unit,
     onRefresh: () -> Unit,
 ) {
+    val trip = state.trip
+    val finish = state.tripFinish
+    if (trip?.status == CarpoolStatus.COMPLETED && finish != null) {
+        TripEndScreen(finish, trip.destination.name, onTripDone)
+        return
+    }
     LaunchedEffect(Unit) {
         while (isActive) {
             onRefresh()
             delay(REFRESH_MILLIS)
         }
     }
-    val trip = state.trip
     BoxWithConstraints(Modifier.fillMaxSize().clip(RoundedCornerShape(24.dp))) {
         val compact = maxWidth < 900.dp
+        if (panelMode && trip?.status == CarpoolStatus.IN_PROGRESS) {
+            DrivingPanel(state, trip, onConfirmBoarding, onMarkNoShow, onFinishTrip, onClosePanel)
+            return@BoxWithConstraints
+        }
         val density = LocalDensity.current
         CarpoolMap(
             stops = trip?.toMapStops().orEmpty(),
@@ -93,7 +116,12 @@ fun DrivingScreen(
                 .padding(20.dp)
                 .then(if (compact) Modifier.fillMaxWidth() else Modifier.width(560.dp)),
         ) {
-            NextStopCard(state, trip, onConfirmBoarding, onStartCarpool)
+            NextStopCard(state, trip, onConfirmBoarding, onMarkNoShow, onStartCarpool, onFinishTrip)
+            // 앱이 3분할을 직접 요청할 API 가 없어(Pleos) 운전자에게 window bar 를 안내한다
+            var hintClosed by rememberSaveable { mutableStateOf(false) }
+            if (!compact && trip?.status == CarpoolStatus.IN_PROGRESS && !hintClosed) {
+                SplitHint(onClose = { hintClosed = true }, modifier = Modifier.padding(top = 16.dp))
+            }
         }
         Button(
             onClick = onOpenNavigation,
@@ -115,7 +143,9 @@ private fun NextStopCard(
     state: CarpoolUiState,
     trip: CarpoolTrip?,
     onConfirmBoarding: (String) -> Unit,
+    onMarkNoShow: (String) -> Unit,
     onStartCarpool: () -> Unit,
+    onFinishTrip: () -> Unit,
 ) {
     Column(
         Modifier
@@ -151,7 +181,11 @@ private fun NextStopCard(
                     Sub(listOfNotNull(next.pickup.name, waypoint?.remainTimeSeconds?.let(::formatDuration)).joinToString(" · "))
                     StopProgress(trip)
                     if (state.isAllowed(CarpoolAction.CONFIRM_BOARDING)) {
-                        PrimaryActionButton("${next.name} 탑승 완료", { onConfirmBoarding(next.id) }, Modifier.fillMaxWidth())
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            PrimaryActionButton("${next.name} 탑승 완료", { onConfirmBoarding(next.id) }, Modifier.weight(2f))
+                            // 픽업 지점에 나오지 않으면 미탑승으로 넘기고 다음 경유지로
+                            TonalActionButton("미탑승", { onMarkNoShow(next.id) }, Modifier.weight(1f))
+                        }
                     } else {
                         ParkedOnlyNotice("정차 후 탑승을 확인하세요")
                     }
@@ -160,6 +194,12 @@ private fun NextStopCard(
                     Big(state.guidance.remainDistanceMeters?.let { "${formatDistance(it)} 남음" } ?: trip.destination.name)
                     Sub(listOfNotNull(trip.destination.name, state.guidance.remainTimeSeconds?.let(::formatDuration)).joinToString(" · "))
                     StopProgress(trip)
+                    // 내비 도착 이벤트가 오지 않을 때(에뮬레이터 등) 운전자가 직접 끝낸다
+                    if (state.isAllowed(CarpoolAction.FINISH_TRIP)) {
+                        TonalActionButton("운행 종료", onFinishTrip, Modifier.fillMaxWidth())
+                    } else {
+                        ParkedOnlyNotice("정차 후 운행을 종료할 수 있어요")
+                    }
                 }
             }
         }
@@ -211,6 +251,35 @@ private fun ArrivalPill(state: CarpoolUiState, trip: CarpoolTrip, modifier: Modi
             .background(DsColors.Surface, RoundedCornerShape(40.dp))
             .padding(horizontal = 28.dp, vertical = 16.dp),
     )
+}
+
+/** 내비 + 페어카 3분할 안내. 내비가 넓게 떠 있으면 화면 오른쪽 끝 ⋮ 를 끌어야 페어카가 옆에 좁게 열린다. */
+@Composable
+private fun SplitHint(onClose: () -> Unit, modifier: Modifier) {
+    Row(
+        modifier
+            .fillMaxWidth()
+            .shadow(6.dp, RoundedCornerShape(20.dp))
+            .background(DsColors.Surface, RoundedCornerShape(20.dp))
+            .padding(start = 24.dp, top = 16.dp, bottom = 16.dp, end = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text("내비와 나란히 보기", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "화면 오른쪽 끝 ⋮ 막대를 왼쪽으로 끌면 내비 옆에 페어카가 열려요. 다음부터는 주행을 시작해도 나란히 유지돼요.",
+                style = MaterialTheme.typography.bodySmall,
+                color = DsColors.OnSurfaceMuted,
+            )
+        }
+        Box(
+            Modifier.size(TouchTargetHeight).clip(CircleShape).clickable(onClick = onClose),
+            contentAlignment = Alignment.Center,
+        ) {
+            CloseIcon(Modifier.size(24.dp))
+        }
+    }
 }
 
 @Composable

@@ -21,10 +21,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.paircar.core.ui.theme.DsColors
-import com.paircar.domain.model.BoardingStatus
-import com.paircar.domain.model.CarpoolStatus
 import com.paircar.domain.model.MatchStatus
-import com.paircar.domain.model.Passenger
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 
@@ -130,31 +127,12 @@ private val timeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 
 fun LocalTime.hhmm(): String = format(timeFormatter)
 
-fun CarpoolStatus.label(): Pair<String, Color> = when (this) {
-    CarpoolStatus.SCHEDULED -> "출발 전" to DsColors.Info
-    CarpoolStatus.IN_PROGRESS -> "운행 중" to DsColors.Brand
-    CarpoolStatus.COMPLETED -> "운행 완료" to DsColors.OnSurfaceMuted
-    CarpoolStatus.CANCELLED -> "취소됨" to DsColors.Danger
-}
-
 fun MatchStatus.label(): Pair<String, Color> = when (this) {
     MatchStatus.REQUESTED -> "요청됨" to DsColors.Warning
     MatchStatus.ACCEPTED -> "수락" to DsColors.Brand
     MatchStatus.DECLINED -> "거절" to DsColors.OnSurfaceMuted
     MatchStatus.CANCELLED -> "취소" to DsColors.Danger
 }
-
-fun BoardingStatus.label(): Pair<String, Color> = when (this) {
-    BoardingStatus.WAITING -> "대기" to DsColors.Info
-    BoardingStatus.ARRIVED_AT_PICKUP -> "픽업 지점 도착" to DsColors.Warning
-    BoardingStatus.BOARDED -> "탑승" to DsColors.Brand
-    BoardingStatus.NO_SHOW -> "미탑승" to DsColors.Danger
-    BoardingStatus.DROPPED_OFF -> "하차" to DsColors.OnSurfaceMuted
-}
-
-/** 오늘 불참이면 탑승 상태 대신 "불참" */
-fun Passenger.statusLabel(): Pair<String, Color> =
-    if (isAttending) boardingStatus.label() else "불참" to DsColors.OnSurfaceMuted
 
 /** 남은 시간(초)을 "약 N분"으로. 단위가 초라는 가정은 Pleos 에서 미검증. */
 fun formatRemainMinutes(seconds: Int?): String? =

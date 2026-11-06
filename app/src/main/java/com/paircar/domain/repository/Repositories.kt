@@ -18,6 +18,8 @@ import com.paircar.domain.model.NaviProvider
 import com.paircar.domain.model.NaviScreen
 import com.paircar.domain.model.Place
 import com.paircar.domain.model.RouteRequest
+import com.paircar.domain.model.TripRecord
+import com.paircar.domain.model.TripSession
 import com.paircar.domain.model.VehicleEnergy
 import com.paircar.domain.model.WaypointSlot
 import kotlinx.coroutines.flow.SharedFlow
@@ -41,6 +43,20 @@ interface CarpoolRepository {
 interface SettlementRepository {
     /** 정산 내역이 있는 달, 최근 달이 먼저 */
     val settlements: StateFlow<List<MonthlySettlement>>
+}
+
+/** 끝난 운행 기록. 정산 서버가 없어 기기에 저장한다. */
+interface TripRecordRepository {
+    /** 최근 운행이 먼저 */
+    val records: StateFlow<List<TripRecord>>
+
+    suspend fun save(record: TripRecord)
+}
+
+/** 운행 기록 시작값 보관. 앱 프로세스가 끝나도 이어서 기록할 수 있게 한다. */
+interface TripSessionStore {
+    fun loadSession(): TripSession?
+    fun saveSession(session: TripSession?)
 }
 
 /**

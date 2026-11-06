@@ -34,13 +34,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.paircar.R
 import com.paircar.core.ui.components.ActionTile
 import com.paircar.core.ui.components.ChevronIcon
 import com.paircar.core.ui.components.ExpandedWidthThreshold
@@ -56,6 +55,7 @@ import com.paircar.core.ui.components.SectionHeader
 import com.paircar.core.ui.components.TonalActionButton
 import com.paircar.core.ui.components.formatDistance
 import com.paircar.core.ui.components.formatDuration
+import com.paircar.core.ui.components.headerBackground
 import com.paircar.core.ui.components.hhmm
 import com.paircar.core.ui.map.CarpoolMap
 import com.paircar.core.ui.map.MapInsets
@@ -138,11 +138,11 @@ private fun CrewPanel(
             .clip(RoundedCornerShape(24.dp))
             .background(DsColors.Surface),
     ) {
-        // 시안의 연한 그라데이션 머리 영역
+        // 시안의 머리 영역 배경 그림
         Column(
             Modifier
                 .fillMaxWidth()
-                .background(Brush.horizontalGradient(listOf(DsColors.Surface, Color(0xFFE8EDF5))))
+                .headerBackground(R.drawable.bg_header_crew)
                 .padding(start = 28.dp, end = 28.dp, top = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {

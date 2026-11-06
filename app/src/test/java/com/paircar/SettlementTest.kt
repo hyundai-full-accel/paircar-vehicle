@@ -6,6 +6,7 @@ import com.paircar.domain.model.MemberRides
 import com.paircar.domain.model.SettlementPolicy
 import com.paircar.domain.model.SettlementReceipt
 import com.paircar.domain.model.VehicleEnergy
+import com.paircar.domain.model.estimateRideWon
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
 import org.junit.Test
@@ -46,6 +47,12 @@ class SettlementTest {
 
         assertEquals(10_000L, receipt.totalWon)
         assertEquals(0L, receipt.roundingWon)
+    }
+
+    @Test
+    fun `one ride estimate uses the same rule as the monthly receipt`() {
+        // (40km ÷ 2 + 8.9km) ÷ 5.5km/kWh × 347원/kWh = 1,823.3… → 1,900원
+        assertEquals(1_900L, october.policy.estimateRideWon(sharedKm = 40.0, headcount = 2, detourKm = 8.9))
     }
 
     @Test

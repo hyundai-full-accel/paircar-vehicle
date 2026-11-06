@@ -33,13 +33,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.paircar.R
 import com.paircar.core.ui.components.ActionTile
 import com.paircar.core.ui.components.ChevronIcon
 import com.paircar.core.ui.components.ExpandedWidthThreshold
@@ -54,6 +54,7 @@ import com.paircar.core.ui.components.PrimaryActionButton
 import com.paircar.core.ui.components.ScrollColumn
 import com.paircar.core.ui.components.SectionHeader
 import com.paircar.core.ui.components.TonalActionButton
+import com.paircar.core.ui.components.headerBackground
 import com.paircar.core.ui.theme.DsColors
 import com.paircar.domain.model.EfficiencySource
 import com.paircar.domain.model.MonthlySettlement
@@ -106,24 +107,25 @@ fun SettlementScreen(
                 modifier = modifier,
             )
         }
-        val receiptPanel: @Composable (Modifier) -> Unit = { modifier ->
+        val receiptPanel: @Composable (Modifier, Boolean) -> Unit = { modifier, fillHeight ->
             ReceiptPanel(
                 settlement = settlement,
                 receipt = selected,
                 onOpenReceipt = { modal = SettlementModal.Receipt(selected.member.name) },
                 onRegisterAccount = { onNotReady("수취 계좌 등록은 다음 단계에서 제공돼요") },
+                fillHeight = fillHeight,
                 modifier = modifier,
             )
         }
         if (maxWidth >= ExpandedWidthThreshold) {
             Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
                 summary(Modifier.weight(1.75f).fillMaxHeight(), true)
-                receiptPanel(Modifier.weight(1f).fillMaxHeight())
+                receiptPanel(Modifier.weight(1f).fillMaxHeight(), true)
             }
         } else {
             ScrollColumn {
                 summary(Modifier.fillMaxWidth(), false)
-                receiptPanel(Modifier.fillMaxWidth())
+                receiptPanel(Modifier.fillMaxWidth(), false)
             }
         }
 
@@ -174,11 +176,11 @@ private fun SummaryCard(
             .clip(RoundedCornerShape(24.dp))
             .background(DsColors.Surface),
     ) {
-        // 시안의 연한 그라데이션 머리 영역
+        // 시안의 머리 영역 배경 그림
         Column(
             Modifier
                 .fillMaxWidth()
-                .background(Brush.horizontalGradient(listOf(DsColors.Surface, Color(0xFFE8EDF5))))
+                .headerBackground(R.drawable.bg_header_settlement)
                 .padding(start = 36.dp, end = 36.dp, top = 32.dp, bottom = 28.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
@@ -329,6 +331,7 @@ private fun ReceiptPanel(
     receipt: SettlementReceipt,
     onOpenReceipt: () -> Unit,
     onRegisterAccount: () -> Unit,
+    fillHeight: Boolean,
     modifier: Modifier,
 ) {
     Panel(modifier) {
@@ -357,7 +360,8 @@ private fun ReceiptPanel(
             textAlign = TextAlign.End,
             modifier = Modifier.fillMaxWidth(),
         )
-        Spacer(Modifier.weight(1f))
+        // 넓은 화면에서만 버튼을 카드 아래에 붙인다(좁은 창은 스크롤)
+        if (fillHeight) Spacer(Modifier.weight(1f))
         PrimaryActionButton("영수증 상세 보기", onOpenReceipt, Modifier.fillMaxWidth())
         TonalActionButton(
             if (settlement.receiverAccount == null) "수취 계좌 등록" else "수취 계좌 변경",

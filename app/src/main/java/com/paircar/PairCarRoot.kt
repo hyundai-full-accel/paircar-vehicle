@@ -1,6 +1,7 @@
 package com.paircar
 
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -24,6 +25,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -31,6 +33,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -38,25 +41,28 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.paircar.core.navigation.Screen
 import com.paircar.core.ui.components.BackIcon
 import com.paircar.core.ui.components.CheckBadgeIcon
+import com.paircar.core.ui.components.ExpandedWidthThreshold
 import com.paircar.core.ui.components.GearIcon
 import com.paircar.core.ui.components.TouchTargetHeight
 import com.paircar.core.ui.theme.DsColors
+import com.paircar.domain.model.CarpoolStatus
 import com.paircar.domain.model.DrivingPolicy
 import com.paircar.domain.model.NaviScreen
-import com.paircar.feature.carpool.CarpoolDetailScreen
 import com.paircar.feature.carpool.CarpoolViewModel
 import com.paircar.feature.crew.CrewScreen
 import com.paircar.feature.crew.CrewViewModel
 import com.paircar.feature.driving.DrivingScreen
+import com.paircar.feature.history.HistoryScreen
+import com.paircar.feature.history.HistoryViewModel
 import com.paircar.feature.home.HomeScreen
 import com.paircar.feature.matching.MatchingScreen
 import com.paircar.feature.matching.MatchingViewModel
 import com.paircar.feature.navipoc.NaviPocScreen
 import com.paircar.feature.navipoc.NaviPocViewModel
-import com.paircar.feature.settlement.SettlementScreen
-import com.paircar.feature.settlement.SettlementViewModel
 import com.paircar.feature.settings.SettingsScreen
 import com.paircar.feature.settings.SettingsViewModel
+import com.paircar.feature.settlement.SettlementScreen
+import com.paircar.feature.settlement.SettlementViewModel
 import com.paircar.feature.startup.StartupScreen
 import com.paircar.feature.startup.StartupViewModel
 
@@ -69,14 +75,14 @@ private val BackStackSaver = listSaver<List<Screen>, String>(
 private enum class Tab(val label: String, val screen: Screen) {
     TODAY("오늘의 카풀", Screen.HOME),
     CREW("내 크루", Screen.CREW),
-    HISTORY("운행 기록", Screen.DETAIL),
+    HISTORY("운행 기록", Screen.HISTORY),
     SETTLEMENT("월별 정산", Screen.SETTLEMENT),
 }
 
 private fun Screen.tab(): Tab? = when (this) {
     Screen.HOME, Screen.DRIVING -> Tab.TODAY
     Screen.CREW, Screen.MATCHING -> Tab.CREW
-    Screen.DETAIL -> Tab.HISTORY
+    Screen.HISTORY -> Tab.HISTORY
     Screen.SETTLEMENT -> Tab.SETTLEMENT
     Screen.SETTINGS, Screen.NAVI_POC -> null
 }
@@ -90,14 +96,22 @@ fun PairCarRoot() {
     val carpoolViewModel: CarpoolViewModel = viewModel(factory = CarpoolViewModel.Factory)
     val state by carpoolViewModel.uiState.collectAsStateWithLifecycle()
 
-    var backStack by rememberSaveable(stateSaver = BackStackSaver) { mutableStateOf(listOf(Screen.HOME)) }
+    // 운행 중에 창을 닫았다가 다시 열면 시작 화면 없이 주행 화면으로 바로 돌아온다
+    val resumingTrip = remember { carpoolViewModel.uiState.value.trip?.status == CarpoolStatus.IN_PROGRESS }
+    var backStack by rememberSaveable(stateSaver = BackStackSaver) {
+        mutableStateOf(if (resumingTrip) listOf(Screen.HOME, Screen.DRIVING) else listOf(Screen.HOME))
+    }
     val current = backStack.last()
     val shown = if (DrivingPolicy.isAllowed(current.action, state.driving)) current else Screen.DRIVING
     val navigate: (Screen) -> Unit = { screen -> if (backStack.last() != screen) backStack = backStack + screen }
     val canGoBack = backStack.size > 1 && shown == current
     val notReady: (String) -> Unit = carpoolViewModel::showMessage
     // 앱을 켤 때 한 번, 오늘의 카풀 자리에 차량 연결 확인 화면을 먼저 보여준다
-    var startupDone by rememberSaveable { mutableStateOf(false) }
+    var startupDone by rememberSaveable { mutableStateOf(resumingTrip) }
+    // 내비와 나란히 놓인 좁은 창(3분할)에서 운행 중이면 탭 없이 주행 패널만 보여준다
+    val narrow = LocalConfiguration.current.screenWidthDp < ExpandedWidthThreshold.value
+    val panelMode = narrow && shown == Screen.DRIVING && state.trip?.status == CarpoolStatus.IN_PROGRESS
+    val activity = LocalActivity.current
     // 연결 확인을 마치고 넘어오면 오늘의 카풀에서 주행 시작 카운트다운을 한다
     var autoStartPending by rememberSaveable { mutableStateOf(false) }
 
@@ -111,15 +125,17 @@ fun PairCarRoot() {
                 .padding(horizontal = 24.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
-            TopBar(
-                selected = shown.tab(),
-                settingsSelected = shown == Screen.SETTINGS,
-                canGoBack = canGoBack,
-                onBack = { backStack = backStack.dropLast(1) },
-                onHome = { backStack = listOf(Screen.HOME) },
-                onSelectTab = { tab -> backStack = listOf(tab.screen) },
-                onOpenSettings = { navigate(Screen.SETTINGS) },
-            )
+            if (!panelMode) {
+                TopBar(
+                    selected = shown.tab(),
+                    settingsSelected = shown == Screen.SETTINGS,
+                    canGoBack = canGoBack,
+                    onBack = { backStack = backStack.dropLast(1) },
+                    onHome = { backStack = listOf(Screen.HOME) },
+                    onSelectTab = { tab -> backStack = listOf(tab.screen) },
+                    onOpenSettings = { navigate(Screen.SETTINGS) },
+                )
+            }
             state.message?.let { MessageBanner(it, carpoolViewModel::dismissMessage) }
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 when (shown) {
@@ -148,7 +164,7 @@ fun PairCarRoot() {
                             invite = invite,
                             onOpenInvite = crewViewModel::ensureInvite,
                             onRegenerateInvite = crewViewModel::createInvite,
-                            onOpenHistory = { backStack = listOf(Screen.DETAIL) },
+                            onOpenHistory = { backStack = listOf(Screen.HISTORY) },
                             onOpenSettlement = { backStack = listOf(Screen.SETTLEMENT) },
                             onNotReady = notReady,
                         )
@@ -159,8 +175,21 @@ fun PairCarRoot() {
                         SettlementScreen(
                             state = settlementState,
                             onSelectMonth = settlementViewModel::selectMonth,
-                            onOpenHistory = { backStack = listOf(Screen.DETAIL) },
+                            onOpenHistory = { backStack = listOf(Screen.HISTORY) },
                             onNotReady = notReady,
+                        )
+                    }
+                    Screen.HISTORY -> {
+                        val historyViewModel: HistoryViewModel = viewModel(factory = HistoryViewModel.Factory)
+                        val historyState by historyViewModel.uiState.collectAsStateWithLifecycle()
+                        HistoryScreen(
+                            state = historyState,
+                            onSelectMonth = historyViewModel::selectMonth,
+                            onSelectFilter = historyViewModel::selectFilter,
+                            onSelectDate = historyViewModel::selectDate,
+                            onSelectRecord = historyViewModel::selectRecord,
+                            onMoveWeek = historyViewModel::moveWeek,
+                            onMessage = notReady,
                         )
                     }
                     Screen.MATCHING -> {
@@ -168,19 +197,19 @@ fun PairCarRoot() {
                         val matchingState by matchingViewModel.uiState.collectAsStateWithLifecycle()
                         MatchingScreen(matchingState, matchingViewModel::accept, matchingViewModel::decline)
                     }
-                    Screen.DETAIL -> CarpoolDetailScreen(
-                        state = state,
-                        onSetRoute = { carpoolViewModel.startGuidance() },
-                        onOpenNavigation = { carpoolViewModel.openNavigation(NaviScreen.MAP) },
-                        onShowRouteOverview = { carpoolViewModel.openNavigation(NaviScreen.ROUTE_OVERVIEW) },
-                        onConfirmBoarding = carpoolViewModel::confirmBoarding,
-                        onMarkNoShow = carpoolViewModel::markNoShow,
-                    )
                     Screen.DRIVING -> DrivingScreen(
                         state = state,
                         onOpenNavigation = { carpoolViewModel.openNavigation(NaviScreen.MAP) },
                         onConfirmBoarding = carpoolViewModel::confirmBoarding,
+                        onMarkNoShow = carpoolViewModel::markNoShow,
                         onStartCarpool = { carpoolViewModel.startGuidance() },
+                        onFinishTrip = carpoolViewModel::finishTrip,
+                        // 운행 종료 후에는 방금 저장한 기록(가장 최근)을 보여준다
+                        onTripDone = { backStack = listOf(Screen.HISTORY) },
+                        panelMode = panelMode,
+                        // 창을 닫으면 Pleos 가 그 자리를 내비로 채운다(moveTaskToBack 은 Pleos 창에서 무시돼 finish 를 쓴다).
+                        // 운행 상태는 앱 범위(AppContainer)에 있어 앱 아이콘으로 다시 열면 주행 화면으로 돌아온다.
+                        onClosePanel = { activity?.finish() },
                         onRefresh = carpoolViewModel::refreshNavi,
                     )
                     Screen.SETTINGS -> {
