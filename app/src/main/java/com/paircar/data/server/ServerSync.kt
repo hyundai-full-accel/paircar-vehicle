@@ -4,6 +4,7 @@ import com.paircar.domain.model.Attendance
 import com.paircar.domain.model.BoardingStatus
 import com.paircar.domain.model.CarpoolTrip
 import com.paircar.domain.model.CrewInvite
+import com.paircar.domain.model.CrewMember
 import com.paircar.domain.model.Place
 import com.paircar.domain.model.SettlementSettings
 import com.paircar.domain.repository.CarpoolRepository
@@ -23,6 +24,9 @@ import org.json.JSONObject
 import java.io.IOException
 import java.security.MessageDigest
 import java.time.LocalDateTime
+
+/** 서버의 크루 (GET /api/crews/{crewId} + /members) */
+data class ServerCrew(val crewId: Long, val name: String, val members: List<CrewMember>)
 
 /** 서버 연결 상태 (개발 확인용) */
 sealed interface ServerSyncState {
@@ -64,8 +68,50 @@ class ServerSync(
     private val _state = MutableStateFlow<ServerSyncState>(ServerSyncState.Idle)
     val state: StateFlow<ServerSyncState> = _state.asStateFlow()
 
-    /** 앱 시작 때: 서버 준비(멤버·크루 등) 후 남은 요청을 보낸다 */
-    fun start() = flushLater()
+    private val _crew = MutableStateFlow<ServerCrew?>(null)
+
+    /** 서버의 크루 정보와 명단. 아직 못 받았으면 null */
+    val crew: StateFlow<ServerCrew?> = _crew.asStateFlow()
+
+    /** 앱 시작 때: 서버 준비(멤버·크루 등) 후 남은 요청을 보내고 크루 명단을 받는다 */
+    fun start() {
+        scope.launch(Dispatchers.IO) {
+            flush()
+            refreshCrew()
+        }
+    }
+
+    /** 크루 이름·명단을 다시 받는다 (초대 링크로 새 동승자가 들어왔을 수 있다) */
+    suspend fun refreshCrew() = mutex.withLock {
+        if (!ensureReady()) return@withLock
+        try {
+            loadCrew()
+        } catch (e: Exception) {
+            log("크루 명단을 받지 못했습니다: $e")
+        }
+    }
+
+    private suspend fun loadCrew() {
+        val crewId = store.crewId ?: return
+        val crew = api.crew(crewId)
+        val members = api.crewMembers(crewId)
+        val passengerOf = store.crewMemberIds.entries.associate { (passengerId, crewMemberId) -> crewMemberId to passengerId }
+        val me = store.memberId
+        _crew.value = ServerCrew(
+            crewId = crewId,
+            name = crew.getString("name"),
+            members = (0 until members.length()).map(members::getJSONObject).map { m ->
+                val crewMemberId = m.getLong("crewMemberId")
+                CrewMember(
+                    id = crewMemberId.toString(),
+                    name = m.getString("nickname"),
+                    isDriver = m.getLong("memberId") == me,
+                    joinedAt = ServerTime.toKst(m.getString("joinedAt")),
+                    passengerId = passengerOf[crewMemberId],
+                )
+            }.sortedWith(compareByDescending<CrewMember> { it.isDriver }.thenBy { it.joinedAt }),
+        )
+    }
 
     // 운행 이벤트 → 요청 쌓기
 
@@ -297,16 +343,23 @@ class ServerSync(
             store.carId = car.getLong("carId")
         }
         if (store.crewId == null) {
-            val crew = api.createCrew(carpool.crew.value?.name ?: trip?.title ?: DEFAULT_CREW_NAME)
-            store.crewId = crew.getLong("crewId")
-            log("서버 크루 생성: ${store.crewId}")
+            // 이미 만든 크루가 있으면 그것을 쓴다 (크루 생성 응답을 못 받고 끊긴 경우 등). 없을 때만 새로 만든다.
+            val existing = api.myCrews().let { crews -> (0 until crews.length()).map(crews::getJSONObject) }.firstOrNull()
+            if (existing != null) {
+                store.crewId = existing.getLong("crewId")
+                log("서버 크루 이어서 사용: ${store.crewId}")
+            } else {
+                store.crewId = api.createCrew(carpool.crew.value?.name ?: trip?.title ?: DEFAULT_CREW_NAME).getLong("crewId")
+                log("서버 크루 생성: ${store.crewId}")
+            }
         }
         if (seedPassengers && trip != null) seed(trip)
         syncSettings(driverName)
     }
 
     private suspend fun seed(trip: CarpoolTrip) {
-        val missing = trip.passengers.filter { it.id !in store.crewMemberIds }
+        // 수락한 동승자만 크루원이다 (새 동승 요청은 아직 크루가 아니다)
+        val missing = trip.acceptedPassengers.filter { it.id !in store.crewMemberIds }
         if (missing.isEmpty()) return
         val code = api.createInvite(store.crewId!!).getString("code")
         missing.forEach { passenger ->

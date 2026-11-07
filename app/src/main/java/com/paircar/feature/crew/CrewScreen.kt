@@ -237,9 +237,27 @@ private fun CrewPanel(
                             .padding(horizontal = 12.dp, vertical = 8.dp),
                     )
                 }
-                MemberRow(trip.driver.name, "운전자", "${trip.origin.name}에서 출발", "탑승 중")
-                trip.acceptedPassengers.forEachIndexed { index, passenger ->
-                    MemberRow(passenger.name, "동승자${index + 1}", trip.memberNote(passenger), passenger.crewStatus())
+                if (crew.members.isEmpty()) {
+                    // 서버 명단을 아직 못 받았거나 서버 없이(Mock) 쓸 때: 오늘 운행 기준
+                    MemberRow(trip.driver.name, "운전자", "${trip.origin.name}에서 출발", "탑승 중")
+                    trip.acceptedPassengers.forEachIndexed { index, passenger ->
+                        MemberRow(passenger.name, "동승자${index + 1}", trip.memberNote(passenger), passenger.crewStatus())
+                    }
+                } else {
+                    // 서버 크루 명단. 오늘 운행에 있는 사람은 픽업·탑승 상태를, 막 가입한 사람은 가입일을 보여준다
+                    crew.members.filterNot { it.isDriver }.let { riders ->
+                        crew.members.filter { it.isDriver }.forEach {
+                            MemberRow(it.name, "운전자", "${trip.origin.name}에서 출발", "탑승 중")
+                        }
+                        riders.forEachIndexed { index, member ->
+                            val passenger = trip.acceptedPassengers.firstOrNull { it.id == member.passengerId }
+                            if (passenger != null) {
+                                MemberRow(member.name, "동승자${index + 1}", trip.memberNote(passenger), passenger.crewStatus())
+                            } else {
+                                MemberRow(member.name, "동승자${index + 1}", "${member.joinedAt.format(JoinedFormat)} 가입", "일정 없음")
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -519,6 +537,8 @@ private fun InviteModal(crew: Crew, state: InviteUiState, onRegenerate: () -> Un
 private fun Int.toTenthKm(): Int = if (this < 1000) this else Math.round(this / 100.0).toInt() * 100
 
 private val ExpiryFormat =DateTimeFormatter.ofPattern("M월 d일 a h:mm", Locale.KOREAN)
+
+private val JoinedFormat = DateTimeFormatter.ofPattern("M월 d일", Locale.KOREAN)
 
 /** 7:10 */
 private fun LocalTime.short(): String = format(DateTimeFormatter.ofPattern("H:mm"))

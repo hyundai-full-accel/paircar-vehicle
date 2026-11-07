@@ -48,11 +48,13 @@ class AppContainer(context: Context) {
     // Pleos 는 창을 닫으면 앱 프로세스를 끝내므로 진행 중인 운행은 기기에 둔다
     private val tripStores = PrefsTripStores(context)
 
+    private val crewInfoStore = PrefsCrewInfoStore(context)
+
     // 오늘 운행·동승자·일정은 서버에 아직 없어 앱(Mock)이 갖는다
     private val localCarpoolRepository: CarpoolRepository = MockCarpoolRepository(
         inviteBaseUrl = BuildConfig.INVITE_BASE_URL,
         stateStore = tripStores,
-        crewInfoStore = PrefsCrewInfoStore(context),
+        crewInfoStore = crewInfoStore,
     )
 
     private val localSettlementSettingsStore: SettlementSettingsStore =
@@ -76,7 +78,9 @@ class AppContainer(context: Context) {
     }
 
     val carpoolRepository: CarpoolRepository =
-        serverSync?.let { ServerCarpoolRepository(localCarpoolRepository, it) } ?: localCarpoolRepository
+        serverSync?.let {
+            ServerCarpoolRepository(localCarpoolRepository, it, applicationScope, editedCrewName = { crewInfoStore.load()?.name })
+        } ?: localCarpoolRepository
 
     // 정산 내역(월 영수증)은 아직 Mock. 서버 영수증 API(GET /api/crews/{crewId}/receipts) 연결은 다음 단계
     val settlementRepository: SettlementRepository = MockSettlementRepository()

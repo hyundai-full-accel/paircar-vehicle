@@ -42,6 +42,39 @@ class ServerTimeTest {
     }
 }
 
+class MergeServerCrewTest {
+
+    private val local = com.paircar.domain.model.Crew("crew-pangyo", "판교 출근 크루", LocalDate.of(2026, 10, 1), setOf(java.time.DayOfWeek.MONDAY))
+    private val server = com.paircar.data.server.ServerCrew(
+        crewId = 7,
+        name = "서버 크루",
+        members = listOf(
+            com.paircar.domain.model.CrewMember("1", "운전자", isDriver = true, joinedAt = LocalDateTime.of(2026, 11, 3, 9, 0)),
+            com.paircar.domain.model.CrewMember("2", "동승자", isDriver = false, joinedAt = LocalDateTime.of(2026, 11, 5, 9, 0), passengerId = "p-1"),
+        ),
+    )
+
+    @Test
+    fun `서버 값을 못 받았으면 앱 크루 그대로`() {
+        assertEquals(local, com.paircar.data.server.mergeServerCrew(local, null, null))
+    }
+
+    @Test
+    fun `이름·시작일·명단은 서버, 요일은 앱`() {
+        val merged = com.paircar.data.server.mergeServerCrew(local, server, null)!!
+        assertEquals("7", merged.id)
+        assertEquals("서버 크루", merged.name)
+        assertEquals(LocalDate.of(2026, 11, 3), merged.startDate)
+        assertEquals(local.days, merged.days)
+        assertEquals(server.members, merged.members)
+    }
+
+    @Test
+    fun `운전자가 바꾼 이름이 있으면 그 이름`() {
+        assertEquals("새 이름", com.paircar.data.server.mergeServerCrew(local, server, "새 이름")!!.name)
+    }
+}
+
 class SegmentBuilderTest {
 
     @Test

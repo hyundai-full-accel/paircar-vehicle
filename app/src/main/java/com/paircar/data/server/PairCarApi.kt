@@ -53,6 +53,10 @@ class PairCarApi(
     suspend fun createCrew(name: String): JSONObject =
         call("POST", "/api/crews", JSONObject().put("name", name)) as JSONObject
 
+    suspend fun myCrews(): JSONArray = call("GET", "/api/crews/me") as JSONArray
+
+    suspend fun crew(crewId: Long): JSONObject = call("GET", "/api/crews/$crewId") as JSONObject
+
     suspend fun crewMembers(crewId: Long): JSONArray = call("GET", "/api/crews/$crewId/members") as JSONArray
 
     suspend fun registerPlace(crewId: Long, name: String, latitude: Double, longitude: Double): JSONObject =

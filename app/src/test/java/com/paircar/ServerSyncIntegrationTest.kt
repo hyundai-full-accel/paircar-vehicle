@@ -18,7 +18,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -58,7 +60,7 @@ class ServerSyncIntegrationTest {
             scope = scope, seedPassengers = true, log = { logs += it; println("[sync] $it") },
             retryDelayMillis = 60_000,
         )
-        val repo = ServerCarpoolRepository(local, sync)
+        val repo = ServerCarpoolRepository(local, sync, scope)
 
         // QR 초대는 서버가 발급
         val invite = sync.createInvite()
@@ -98,6 +100,18 @@ class ServerSyncIntegrationTest {
         assertEquals(3, segments.length())
         assertEquals(listOf(riderCrewMemberId), segments.getJSONObject(1).getJSONArray("riderCrewMemberIds").let { a -> (0 until a.length()).map(a::getLong) })
         assertEquals("MEASURED", segments.getJSONObject(0).getString("fuelEconomySource"))
+
+        // 크루 명단: 운전자 먼저, 예시 동승자는 앱 동승자와 짝지어지고, 초대 링크로 들어온 사람은 짝이 없다
+        api.joinAsNewMember(invite.code, "웹가입")
+        sync.refreshCrew()
+        // 화면이 보는 crew 는 서버 값이 들어오면 비동기로 바뀐다
+        val crew = withTimeout(5_000) { repo.crew.first { it?.members?.any { m -> m.name == "웹가입" } == true } }!!
+        assertEquals(store.crewId.toString(), crew.id)
+        assertTrue(crew.members.first().isDriver)
+        assertEquals(trip.driver.name, crew.members.first().name)
+        assertEquals(rider.id, crew.members.single { it.name == rider.name }.passengerId)
+        assertEquals(null, crew.members.single { it.name == "웹가입" }.passengerId)
+        assertEquals(trip.acceptedPassengers.size + 2, crew.members.size)
 
         // 보낸 시각(+09:00)과 받은 시각(Z)이 같은 순간
         val startedAt = ServerTime.parse(result.getString("startedAt"))

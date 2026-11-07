@@ -14,6 +14,8 @@ data class Crew(
     val startDate: LocalDate,
     /** 반복 운행 요일 */
     val days: Set<DayOfWeek>,
+    /** 서버의 크루 명단 (운전자 먼저, 가입순). 서버 연결 전(Mock)에는 비어 있고 화면은 오늘 운행의 동승자를 보여준다. */
+    val members: List<CrewMember> = emptyList(),
 ) {
     /** 월-금 · 주말 · 매일 · 월·수·목 */
     val daysLabel: String
@@ -28,6 +30,17 @@ data class Crew(
         val WEEKDAYS: Set<DayOfWeek> = DayOfWeek.entries.filter { it.value <= 5 }.toSet()
     }
 }
+
+/** 크루 명단의 한 사람. 서버 crewMember */
+data class CrewMember(
+    val id: String,
+    val name: String,
+    val isDriver: Boolean,
+    /** 가입 시각 (KST) */
+    val joinedAt: LocalDateTime,
+    /** 오늘 운행의 동승자([Passenger.id])와 같은 사람이면 그 ID. 초대 링크로 막 들어온 멤버는 null */
+    val passengerId: String? = null,
+)
 
 /** 월, 화, … */
 fun DayOfWeek.korean(): String = getDisplayName(TextStyle.SHORT, Locale.KOREAN)
