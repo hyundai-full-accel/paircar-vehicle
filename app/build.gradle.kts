@@ -38,8 +38,17 @@ android {
     }
 
     buildTypes {
+        debug {
+            // 페어카 크루 서버. 에뮬레이터에서 10.0.2.2 = 개발 PC 의 localhost (nginx :80)
+            buildConfigField("String", "API_BASE_URL", "\"http://10.0.2.2\"")
+            // 개발용: 앱의 예시 동승자를 서버 크루 멤버로 대신 가입시킨다 (원래는 초대 링크로 직접 가입)
+            buildConfigField("boolean", "SEED_SERVER_PASSENGERS", "true")
+        }
         release {
             isMinifyEnabled = false
+            // 배포 서버 주소가 정해지기 전까지 서버 없이 Mock 만 쓴다
+            buildConfigField("String", "API_BASE_URL", "\"\"")
+            buildConfigField("boolean", "SEED_SERVER_PASSENGERS", "false")
         }
     }
 }
@@ -62,4 +71,10 @@ dependencies {
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.json)
+}
+
+tasks.withType<Test>().configureEach {
+    // 서버 연동 테스트: ./gradlew :app:testDebugUnitTest -PpaircarServer=http://localhost
+    (project.findProperty("paircarServer") as String?)?.let { systemProperty("paircar.server", it) }
 }

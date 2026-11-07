@@ -32,6 +32,8 @@ maplibre-android = { group = "org.maplibre.gl", name = "android-sdk", version.re
 zxing-core = { group = "com.google.zxing", name = "core", version.ref = "zxing" }
 kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutines" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
+# JVM 단위 테스트에서 android.jar 의 org.json 스텁 대신 실제 구현을 쓴다 (서버 연동 테스트)
+json = { group = "org.json", name = "json", version = "20240303" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

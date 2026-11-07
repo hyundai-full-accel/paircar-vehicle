@@ -14,6 +14,8 @@ class PairCarApplication : Application() {
         super.onCreate()
         container = AppContainer(this)
         observeNaviEvents()
+        // 서버 준비(멤버·크루 등)와 지난번에 못 보낸 운행 기록 보내기
+        container.serverSync?.start()
     }
 
     /**
