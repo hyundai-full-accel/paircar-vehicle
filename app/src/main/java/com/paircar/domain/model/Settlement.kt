@@ -99,38 +99,60 @@ data class MemberRides(
     val parkingWon: Int = 0,
     val payment: PaymentStatus = PaymentStatus.UNCONFIRMED,
     val consent: ConsentStatus = ConsentStatus.NEEDED,
+    /** 서버가 발행한 영수증 금액. 있으면 앱에서 다시 계산하지 않고 이 값을 보여준다 */
+    val issued: IssuedAmounts? = null,
 ) {
     val isExcluded: Boolean
         get() = rides == 0
 }
 
-/** 영수증 한 장에 들어가는 계산 과정 */
+/**
+ * 서버 월 영수증(POST·GET /api/crews/{crewId}/receipts)의 금액. 발행 뒤에는 바뀌지 않는다.
+ * 서버는 구간마다 탄 인원으로 나눠 계산하므로 앱의 "함께 탄 거리 ÷ 인원" 식과 다를 수 있어 그대로 쓴다.
+ */
+data class IssuedAmounts(
+    /** 부담 거리 중 함께 탄 거리 몫 (서버 ownDistanceKm) */
+    val sharedShareKm: Double,
+    val detourKm: Double,
+    val chargeWon: Long,
+    val tollWon: Long,
+    /** 영수증 금액 (서버 amountWon, 올림 포함) */
+    val totalWon: Long,
+    /** 운행 1회 평균 금액 (서버 항목 amountWon 평균, 올림 전) */
+    val perRideWon: Long,
+    /** 운전자가 받지 않기로 한 영수증 (서버 waivedAt) */
+    val waived: Boolean = false,
+)
+
+/** 영수증 한 장에 들어가는 계산 과정. 서버가 발행했으면 [MemberRides.issued] 값을 그대로 쓴다 */
 data class SettlementReceipt(
     val member: MemberRides,
     val policy: SettlementPolicy,
 ) {
-    val sharedShareKm: Double = if (member.isExcluded) 0.0 else member.sharedKm / member.headcount
-    val detourKm: Double = member.detourKmPerRide * member.rides
+    private val issued = member.issued
+
+    val sharedShareKm: Double = issued?.sharedShareKm ?: if (member.isExcluded) 0.0 else member.sharedKm / member.headcount
+    val detourKm: Double = issued?.detourKm ?: (member.detourKmPerRide * member.rides)
     val burdenKm: Double = sharedShareKm + detourKm
 
     /** 충전비는 원 단위 반올림 */
-    val chargeWon: Long = if (policy.rules.includeCharge) chargeOf(burdenKm) else 0
-    val tollWon: Long = if (policy.rules.includeToll) member.tollWon.toLong() else 0
-    val parkingWon: Long = if (policy.rules.includeParking) member.parkingWon.toLong() else 0
+    val chargeWon: Long = issued?.chargeWon ?: if (policy.rules.includeCharge) chargeOf(burdenKm) else 0
+    val tollWon: Long = issued?.tollWon ?: if (policy.rules.includeToll) member.tollWon.toLong() else 0
+    val parkingWon: Long = if (issued == null && policy.rules.includeParking) member.parkingWon.toLong() else 0
     val subtotalWon: Long = chargeWon + tollWon + parkingWon
 
     /** 송금하기 쉽게 [SettlementPolicy.roundUpUnit] 원 단위로 올린다 */
-    val totalWon: Long = ceilTo(subtotalWon, policy.roundUpUnit.toLong())
+    val totalWon: Long = issued?.totalWon ?: ceilTo(subtotalWon, policy.roundUpUnit.toLong())
     val roundingWon: Long = totalWon - subtotalWon
 
     /** 아직 받지 못한 금액 */
-    val dueWon: Long = if (member.payment == PaymentStatus.PAID) 0 else totalWon
+    val dueWon: Long = if (member.payment == PaymentStatus.PAID || issued?.waived == true) 0 else totalWon
 
     /**
      * 한 번 탔을 때의 몫 (올림 전). 함께 탄 거리는 탄 횟수로 고르게 나눈다.
      * 분담 내역의 운행별 금액으로 쓰고, 월 금액은 합계를 한 번에 올린다.
      */
-    val perRideWon: Long = if (member.isExcluded) 0 else {
+    val perRideWon: Long = issued?.perRideWon ?: if (member.isExcluded) 0 else {
         val km = member.sharedKm / member.rides / member.headcount + member.detourKmPerRide
         (if (policy.rules.includeCharge) chargeOf(km) else 0) +
             (if (policy.rules.includeToll) member.tollWon.toLong() / member.rides else 0) +
@@ -201,8 +223,14 @@ fun MonthlySettlement.resolve(
     settings: SettlementSettings,
     request: SettlementRequest?,
     energy: VehicleEnergy,
-): MonthlySettlement = copy(
-    receiverAccount = settings.account,
-    policy = request?.policy ?: policy.withSettings(settings).withVehicle(energy),
-    requestedAt = request?.requestedAt ?: requestedAt,
-)
+): MonthlySettlement =
+    if (request == null && requestedAt != null) {
+        // 서버가 이미 발행한 달: 발행 때 기준(전비·단가·계좌)을 그대로 둔다
+        this
+    } else {
+        copy(
+            receiverAccount = settings.account,
+            policy = request?.policy ?: policy.withSettings(settings).withVehicle(energy),
+            requestedAt = request?.requestedAt ?: requestedAt,
+        )
+    }

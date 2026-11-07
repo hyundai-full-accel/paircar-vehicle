@@ -3,6 +3,7 @@ package com.paircar
 import com.paircar.data.server.RideEvent
 import com.paircar.data.server.ServerTime
 import com.paircar.data.server.buildSegments
+import com.paircar.domain.model.resolve
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -72,6 +73,72 @@ class MergeServerCrewTest {
     @Test
     fun `운전자가 바꾼 이름이 있으면 그 이름`() {
         assertEquals("새 이름", com.paircar.data.server.mergeServerCrew(local, server, "새 이름")!!.name)
+    }
+}
+
+class ServerSettlementTest {
+
+    // 로컬 서버가 실제로 발행한 영수증 값 (20km 동승, 13.1km/L, 1,700원, 통행료 1,500원 반씩)
+    private val receipt = com.paircar.data.server.ServerReceipt(
+        receiptId = 1, payerNickname = "차수아", payeeNickname = "최민혁",
+        boardingDays = 1, sharedDistanceKm = 20.0, detourKm = 0.0, ownDistanceKm = 10.0,
+        fuelEconomy = 13.1, fuelEconomySource = "MEASURED", fuelPriceWon = 1700,
+        tollWon = 750.0, roundingWon = 52.29, amountWon = 2100,
+        payeeBankName = "테스트은행", payeeAccountNumber = "000-000-0000", waived = false,
+        issuedAt = LocalDateTime.of(2026, 11, 7, 17, 42),
+        items = listOf(com.paircar.data.server.ServerReceiptItem(LocalDate.of(2026, 11, 7), 2047.71)),
+    )
+
+    @Test
+    fun `발행한 영수증은 서버 금액을 그대로 보여준다`() {
+        val settlement = com.paircar.data.server.issuedSettlement(
+            java.time.YearMonth.of(2026, 11), "판교 출근 크루", listOf(receipt), roster = listOf("차수아", "한민서"),
+        )
+        val shown = settlement.receipts.single { it.member.name == "차수아" }
+        assertEquals(2100, shown.totalWon)
+        assertEquals(2100, shown.dueWon)
+        assertEquals(750, shown.tollWon)
+        assertEquals(1298, shown.chargeWon)
+        assertEquals(52, shown.roundingWon)
+        assertEquals(10.0, shown.burdenKm, 0.0)
+        assertEquals(2048, shown.perRideWon)
+        assertEquals(2, shown.member.headcount)
+
+        assertTrue(settlement.receipts.single { it.member.name == "한민서" }.member.isExcluded)
+        assertEquals(2100, settlement.totalDueWon)
+        assertEquals(LocalDate.of(2026, 11, 7), settlement.requestedAt)
+        assertEquals("000-000-0000", settlement.receiverAccount?.number)
+        assertEquals(1, settlement.carpoolDays)
+    }
+
+    @Test
+    fun `발행한 달은 지금 설정·차량 전비로 다시 계산하지 않는다`() {
+        val settlement = com.paircar.data.server.issuedSettlement(java.time.YearMonth.of(2026, 11), "크루", listOf(receipt), emptyList())
+        val resolved = settlement.resolve(
+            com.paircar.domain.model.SettlementSettings(chargePricePerKwh = 999, efficiencyKmPerKwh = 1.0),
+            request = null,
+            energy = com.paircar.domain.model.VehicleEnergy(cumulativeEvEfficiency = 7.0),
+        )
+        assertEquals(settlement, resolved)
+    }
+
+    @Test
+    fun `면제한 영수증은 받을 금액이 없다`() {
+        val settlement = com.paircar.data.server.issuedSettlement(java.time.YearMonth.of(2026, 11), "크루", listOf(receipt.copy(waived = true)), emptyList())
+        assertEquals(0, settlement.totalDueWon)
+    }
+
+    @Test
+    fun `발행 전인 달은 기기 운행 기록으로 어림하고, 크루원이 없으면 보여주지 않는다`() {
+        val november = java.time.YearMonth.of(2026, 11)
+        assertEquals(null, com.paircar.data.server.estimatedSettlement(november, "크루", "운전자", emptyList(), emptyList()))
+        val records = com.paircar.data.mock.MockTripHistory.records(until = LocalDate.of(2026, 11, 10))
+        val estimate = com.paircar.data.server.estimatedSettlement(november, "크루", "운전자", listOf("차수아", "한민서"), records)!!
+        assertEquals(null, estimate.requestedAt)
+        assertTrue(estimate.members.single { it.name == "차수아" }.rides > 0)
+        assertTrue(estimate.members.single { it.name == "한민서" }.isExcluded)
+        // 10월 기록은 11월 어림에 들어가지 않는다
+        assertEquals(records.count { it.date.monthValue == 11 && it.passengerNames.isNotEmpty() }, estimate.carpoolDays)
     }
 }
 

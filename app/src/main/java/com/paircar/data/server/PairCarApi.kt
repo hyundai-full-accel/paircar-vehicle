@@ -73,6 +73,16 @@ class PairCarApi(
     suspend fun changeFuelPrice(crewId: Long, priceWon: Int?): JSONObject =
         call("PUT", "/api/crews/$crewId/fuel-price", JSONObject().put("priceWon", priceWon ?: JSONObject.NULL)) as JSONObject
 
+    // 정산 (month: "2026-11")
+
+    /** 내 월 영수증 (운전자면 받을 영수증, 동승자면 낼 영수증) */
+    suspend fun receipts(crewId: Long, month: String): JSONArray =
+        call("GET", "/api/crews/$crewId/receipts?month=$month") as JSONArray
+
+    /** 월 영수증 발행. 새로 발행한 영수증만 돌려준다 (이미 발행된 것은 빈 목록) */
+    suspend fun issueReceipts(crewId: Long, month: String): JSONArray =
+        call("POST", "/api/crews/$crewId/receipts?month=$month") as JSONArray
+
     // 운행 (모든 응답은 운행 전체 상태 TripResult)
 
     suspend fun startTrip(body: JSONObject): JSONObject = call("POST", "/api/trips", body) as JSONObject

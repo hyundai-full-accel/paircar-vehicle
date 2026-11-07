@@ -41,7 +41,7 @@ data class SettlementUiState(
  * 운전자 설정(단가·비용 항목)과 차량 전비를 반영하고, 요청한 달은 요청 때 기준으로 고정한다.
  */
 class SettlementViewModel(
-    repository: SettlementRepository,
+    private val repository: SettlementRepository,
     private val settingsStore: SettlementSettingsStore,
     tripRecordRepository: TripRecordRepository,
     private val energyRepository: VehicleEnergyRepository,
@@ -74,6 +74,7 @@ class SettlementViewModel(
 
     init {
         viewModelScope.launch { energy.value = energyRepository.read() }
+        viewModelScope.launch { repository.refresh() }
     }
 
     fun selectMonth(month: YearMonth) {
@@ -89,14 +90,28 @@ class SettlementViewModel(
     }
 
     /**
-     * 고른 달 정산을 지금 기준으로 확정해 기기에 기록한다.
-     * 정산 서버가 없어 동승자에게 알림은 아직 보내지 못한다.
+     * 고른 달 정산을 확정한다.
+     * 서버 연결 시: 서버가 탑승·구간 기록으로 월 영수증을 발행하고 동승자에게 알린다 (발행 뒤 금액 고정).
+     * 서버가 없으면: 지금 기준을 기기에만 기록한다.
      */
     fun requestSettlement(onDone: (String) -> Unit) {
         val settlement = uiState.value.settlement ?: return
         when {
             settlement.receiverAccount == null -> onDone("수취 계좌를 먼저 등록해 주세요")
             settlement.requested -> onDone("이미 요청한 정산이에요")
+            repository.issuesOnServer -> viewModelScope.launch {
+                runCatching { repository.issue(settlement.month) }
+                    .onSuccess {
+                        onDone(
+                            if (settlement.month == YearMonth.from(today())) {
+                                "정산 영수증을 발행했어요. 오늘 이후 운행은 다음 달 정산에 들어가요"
+                            } else {
+                                "정산 영수증을 발행했어요"
+                            },
+                        )
+                    }
+                    .onFailure { onDone(it.message ?: "정산을 요청하지 못했어요") }
+            }
             else -> viewModelScope.launch {
                 runCatching { settingsStore.saveRequest(SettlementRequest(settlement.month, today(), settlement.policy)) }
                     .onSuccess { onDone("정산 금액을 확정했어요. 동승자 알림은 정산 서버 연동 후 보낼 수 있어요") }

@@ -16,6 +16,7 @@ import com.paircar.data.remote.OsrmRoutePreviewRepository
 import com.paircar.data.server.PairCarApi
 import com.paircar.data.server.PrefsServerStore
 import com.paircar.data.server.ServerCarpoolRepository
+import com.paircar.data.server.ServerSettlementRepository
 import com.paircar.data.server.ServerSettlementSettingsStore
 import com.paircar.data.server.ServerSync
 import com.paircar.domain.repository.RoutePreviewRepository
@@ -82,8 +83,12 @@ class AppContainer(context: Context) {
             ServerCarpoolRepository(localCarpoolRepository, it, applicationScope, editedCrewName = { crewInfoStore.load()?.name })
         } ?: localCarpoolRepository
 
-    // 정산 내역(월 영수증)은 아직 Mock. 서버 영수증 API(GET /api/crews/{crewId}/receipts) 연결은 다음 단계
-    val settlementRepository: SettlementRepository = MockSettlementRepository()
+    // 월별 정산: 서버 월 영수증. 서버가 없으면 Mock
+    val settlementRepository: SettlementRepository by lazy {
+        serverSync?.let {
+            ServerSettlementRepository(it, carpoolRepository, tripRecordRepository, applicationScope, log = { msg -> Log.i("PairCarServer", msg) })
+        } ?: MockSettlementRepository()
+    }
 
     val settlementSettingsStore: SettlementSettingsStore =
         serverSync?.let { sync -> ServerSettlementSettingsStore(localSettlementSettingsStore) { sync.onSettingsChanged() } }

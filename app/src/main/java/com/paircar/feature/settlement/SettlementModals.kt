@@ -434,7 +434,12 @@ internal fun BoxScope.ProgressModal(
         )
         when {
             settlement.requestedAt != null -> FormNote(
-                "${settlement.requestedAt.monthValue}월 ${settlement.requestedAt.dayOfMonth}일에 정산 금액을 확정했어요. 동승자 알림은 정산 서버 연동 후 보낼 수 있어요.",
+                "${settlement.requestedAt.monthValue}월 ${settlement.requestedAt.dayOfMonth}일에 정산 금액을 확정했어요. " +
+                    if (settlement.members.any { it.issued != null }) {
+                        "서버가 동승자에게 영수증을 보냈어요."
+                    } else {
+                        "동승자 알림은 정산 서버 연동 후 보낼 수 있어요."
+                    },
             )
             settlement.receiverAccount == null -> Row(
                 Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick = onOpenSettings).padding(vertical = 4.dp),

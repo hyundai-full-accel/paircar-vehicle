@@ -28,6 +28,7 @@ import com.paircar.domain.model.VehicleEnergy
 import com.paircar.domain.model.WaypointSlot
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import java.time.YearMonth
 
 /** 카풀 일정/매칭/크루 데이터. 현재는 Mock, 이후 REST API 구현으로 교체한다. */
 interface CarpoolRepository {
@@ -49,10 +50,19 @@ interface CarpoolRepository {
     suspend fun createInvite(): CrewInvite
 }
 
-/** 월별 정산 기록. 정산 서버 미구축이라 지금은 Mock 만 있다. */
+/** 월별 정산. 구현: data.server.ServerSettlementRepository(서버 월 영수증), data.mock.MockSettlementRepository */
 interface SettlementRepository {
     /** 정산 내역이 있는 달, 최근 달이 먼저 */
     val settlements: StateFlow<List<MonthlySettlement>>
+
+    /** true 면 정산 요청을 서버가 영수증으로 발행한다 ([issue]). false 면 기기에만 기록한다 */
+    val issuesOnServer: Boolean
+        get() = false
+
+    suspend fun refresh() {}
+
+    /** 고른 달의 영수증을 서버에서 발행한다 (발행 뒤 금액은 바뀌지 않는다) */
+    suspend fun issue(month: YearMonth) {}
 }
 
 /**

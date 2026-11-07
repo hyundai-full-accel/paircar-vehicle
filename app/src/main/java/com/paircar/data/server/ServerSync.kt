@@ -24,6 +24,7 @@ import org.json.JSONObject
 import java.io.IOException
 import java.security.MessageDigest
 import java.time.LocalDateTime
+import java.time.YearMonth
 
 /** 서버의 크루 (GET /api/crews/{crewId} + /members) */
 data class ServerCrew(val crewId: Long, val name: String, val members: List<CrewMember>)
@@ -182,6 +183,45 @@ class ServerSync(
             code = invite.getString("code"),
             url = invite.getString("inviteUrl"),
             expiresAt = ServerTime.toDeviceLocal(invite.getString("expiresAt")),
+        )
+    }
+
+    // 정산 (월 영수증)
+
+    suspend fun receipts(month: YearMonth): List<ServerReceipt> = mutex.withLock {
+        if (!ensureReady()) throw IOException("서버에 연결하지 못했어요")
+        api.receipts(store.crewId!!, month.toString()).toReceipts()
+    }
+
+    /** 고른 달 영수증을 발행한다. 서버는 운전자·동승자 쌍마다 한 장씩 만든다 */
+    suspend fun issueReceipts(month: YearMonth): List<ServerReceipt> = mutex.withLock {
+        if (!ensureReady()) throw IOException("서버에 연결하지 못했어요")
+        api.issueReceipts(store.crewId!!, month.toString()).toReceipts()
+    }
+
+    private fun JSONArray.toReceipts(): List<ServerReceipt> = (0 until length()).map(::getJSONObject).map { r ->
+        val items = r.getJSONArray("items")
+        ServerReceipt(
+            receiptId = r.getLong("receiptId"),
+            payerNickname = r.getString("payerNickname"),
+            payeeNickname = r.getString("payeeNickname"),
+            boardingDays = r.getInt("boardingDays"),
+            sharedDistanceKm = r.getDouble("sharedDistanceKm"),
+            detourKm = r.getDouble("detourKm"),
+            ownDistanceKm = r.getDouble("ownDistanceKm"),
+            fuelEconomy = r.getDouble("fuelEconomy"),
+            fuelEconomySource = r.getString("fuelEconomySource"),
+            fuelPriceWon = r.getInt("fuelPriceWon"),
+            tollWon = r.getDouble("tollWon"),
+            roundingWon = r.getDouble("roundingWon"),
+            amountWon = r.getLong("amountWon"),
+            payeeBankName = r.optString("payeeBankName"),
+            payeeAccountNumber = r.optString("payeeAccountNumber"),
+            waived = !r.isNull("waivedAt"),
+            issuedAt = ServerTime.toKst(r.getString("issuedAt")),
+            items = (0 until items.length()).map(items::getJSONObject).map {
+                ServerReceiptItem(java.time.LocalDate.parse(it.getString("serviceDate")), it.getDouble("amountWon"))
+            },
         )
     }
 

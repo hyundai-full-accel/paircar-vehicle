@@ -113,6 +113,23 @@ class ServerSyncIntegrationTest {
         assertEquals(null, crew.members.single { it.name == "웹가입" }.passengerId)
         assertEquals(trip.acceptedPassengers.size + 2, crew.members.size)
 
+        // 월별 정산: 발행 전에는 어림값, [정산 요청] → 서버 영수증 발행 → 서버 금액
+        val records = MemoryTripRecords()
+        val settlementRepo = com.paircar.data.server.ServerSettlementRepository(sync, repo, records, scope)
+        val month = java.time.YearMonth.from(trip.date)
+        settlementRepo.refresh()
+        assertTrue(settlementRepo.issuesOnServer)
+        settlementRepo.issue(month)
+        val issued = withTimeout(5_000) { settlementRepo.settlements.first { list -> list.any { it.month == month && it.requested } } }
+            .single { it.month == month }
+        val riderReceipt = issued.receipts.single { it.member.name == rider.name }
+        println("[settlement] ${riderReceipt.member} total=${riderReceipt.totalWon}")
+        assertTrue(riderReceipt.member.issued != null)
+        assertEquals(1, riderReceipt.member.rides)
+        assertEquals(10.0, riderReceipt.member.sharedKm, 0.0)
+        assertTrue(riderReceipt.totalWon > 0)
+        assertEquals("000-0000-0000", issued.receiverAccount?.number)
+
         // 보낸 시각(+09:00)과 받은 시각(Z)이 같은 순간
         val startedAt = ServerTime.parse(result.getString("startedAt"))
         assertTrue(java.time.Duration.between(startedAt, java.time.Instant.now()).abs().seconds < 120)
