@@ -18,6 +18,15 @@ interface ServerStore {
     /** 차량 등록 키. 서버를 초기화해도 같은 차로 보이도록 [reset] 에서 지우지 않는다. */
     val vehicleKey: String
 
+    /** 이 기기(운전자)의 크루 멤버 ID. 우회 거리 등록의 driverId */
+    var driverCrewMemberId: Long?
+
+    /** 서버에 등록·확인한 우회 거리 ("동승자ID@장소키") */
+    var registeredDetours: Set<String>
+
+    /** 개발용: 대신 가입시킨 예시 동승자의 토큰 (동승자 웹 동작을 흉내 내 확인할 때만 쓴다) */
+    var seededRiderTokens: Map<String, String>
+
     /** [PlaceRef.key] → 크루 장소 placeId */
     var placeIds: Map<String, Long>
 
@@ -60,6 +69,21 @@ class PrefsServerStore(context: Context) : ServerStore {
 
     override val vehicleKey: String
         get() = prefs.getString("vehicle_key", null) ?: UUID.randomUUID().toString().also { put("vehicle_key", it) }
+
+    override var driverCrewMemberId: Long? by longPref("driver_crew_member_id")
+
+    override var registeredDetours: Set<String>
+        get() = prefs.getStringSet("registered_detours", null)?.toSet().orEmpty()
+        set(value) {
+            prefs.edit().putStringSet("registered_detours", value).commit()
+        }
+
+    override var seededRiderTokens: Map<String, String>
+        get() = runCatching {
+            val json = JSONObject(prefs.getString("seeded_rider_tokens", null) ?: return emptyMap())
+            json.keys().asSequence().associateWith { json.getString(it) }
+        }.getOrDefault(emptyMap())
+        set(value) = put("seeded_rider_tokens", JSONObject(value).toString())
 
     override var placeIds: Map<String, Long>
         get() = readMap("place_ids")

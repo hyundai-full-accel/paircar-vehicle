@@ -39,6 +39,12 @@
     <uses-permission android:name="pleos.car.permission.CAR_ENERGY" />
     <uses-permission android:name="pleos.car.permission.CAR_DRIVE" />
 
+    <!--
+        TextToSpeech SDK 퍼미션 (동승자 지각·불참·탈 지점 변경 음성 안내)
+        https://document.pleos.ai/docs/pleos-only/connect-sdk-pleos/TextToSpeech/declaring-permissions
+    -->
+    <uses-permission android:name="pleos.car.permission.TTS_SERVICE" />
+
     <!-- 지도 타일(지도 SDK PoC), 추후 서버 API -->
     <uses-permission android:name="android.permission.INTERNET" />
 

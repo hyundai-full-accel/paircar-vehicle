@@ -9,8 +9,15 @@ import com.paircar.domain.model.Place
 import com.paircar.domain.model.SettlementSettings
 import com.paircar.domain.repository.CarpoolRepository
 import com.paircar.domain.repository.VehicleEnergyRepository
+import com.paircar.core.model.GeoPoint
+import com.paircar.domain.model.CrewLiveEvent
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -25,6 +32,9 @@ import java.io.IOException
 import java.security.MessageDigest
 import java.time.LocalDateTime
 import java.time.YearMonth
+
+/** 동승자별 남은 시간·거리 (내비 경유지 정보). 못 구했으면 null */
+data class RiderRemain(val passengerId: String, val remainSeconds: Int?, val remainMeters: Int?)
 
 /** 서버의 크루 (GET /api/crews/{crewId} + /members) */
 data class ServerCrew(val crewId: Long, val name: String, val members: List<CrewMember>)
@@ -98,6 +108,9 @@ class ServerSync(
         val members = api.crewMembers(crewId)
         val passengerOf = store.crewMemberIds.entries.associate { (passengerId, crewMemberId) -> crewMemberId to passengerId }
         val me = store.memberId
+        (0 until members.length()).map(members::getJSONObject).firstOrNull { it.getLong("memberId") == me }?.let {
+            store.driverCrewMemberId = it.getLong("crewMemberId")
+        }
         _crew.value = ServerCrew(
             crewId = crewId,
             name = crew.getString("name"),
@@ -150,7 +163,9 @@ class ServerSync(
                 )
             }
             BoardingStatus.NO_SHOW -> enqueue(TripOp.Absent(trip.id, passengerId))
-            BoardingStatus.WAITING, BoardingStatus.ARRIVED_AT_PICKUP -> Unit
+            // 경유지에 도착했는데 아직 안 탐 → 동승자에게 "차가 도착했어요"
+            BoardingStatus.ARRIVED_AT_PICKUP -> scope.launch(Dispatchers.IO) { sendArrived(trip, passengerId) }
+            BoardingStatus.WAITING -> Unit
         }
     }
 
@@ -185,6 +200,158 @@ class ServerSync(
             expiresAt = ServerTime.toDeviceLocal(invite.getString("expiresAt")),
         )
     }
+
+    // 실시간 구독 (SSE): 동승자 웹 → 서버 → 차량 앱
+
+    private val _liveEvents = MutableSharedFlow<CrewLiveEvent>(extraBufferCapacity = 32)
+
+    /** 서버가 보낸 실시간 알림 (동승자 지각·나와 있음·탈 지점 변경·불참, 영수증 발행 등) */
+    val liveEvents: SharedFlow<CrewLiveEvent> = _liveEvents.asSharedFlow()
+
+    private val _liveConnected = MutableStateFlow(false)
+    val liveConnected: StateFlow<Boolean> = _liveConnected.asStateFlow()
+
+    private var liveJob: Job? = null
+
+    /**
+     * 구독을 열고 끊기면 새 티켓으로 다시 연다 (티켓은 60초짜리 일회용).
+     * 앱이 켜져 있는 동안 계속 돈다.
+     */
+    fun startLive() {
+        if (liveJob?.isActive == true) return
+        liveJob = scope.launch(Dispatchers.IO) {
+            while (isActive) {
+                try {
+                    val ticket = mutex.withLock { if (ensureReady()) api.liveTicket() else null }
+                    if (ticket != null) {
+                        api.streamEvents(ticket) { event, data ->
+                            if (event == "connected") {
+                                _liveConnected.value = true
+                                log("실시간 구독 연결됨")
+                            } else {
+                                runCatching { parseLiveEvent(event, data) }
+                                    .onSuccess { parsed -> log("실시간 알림: $event"); _liveEvents.emit(parsed) }
+                                    .onFailure { log("실시간 알림을 읽지 못했습니다: $event $it") }
+                            }
+                        }
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: ApiException) {
+                    if (e.status == 401 && e.code != "LIVE_TICKET_INVALID") store.reset()
+                    log("실시간 구독 끊김: ${e.message}")
+                } catch (e: Exception) {
+                    log("실시간 구독 끊김: $e")
+                }
+                _liveConnected.value = false
+                delay(LIVE_RECONNECT_MILLIS)
+            }
+        }
+    }
+
+    fun stopLive() {
+        liveJob?.cancel()
+        _liveConnected.value = false
+    }
+
+    /** SSE data: `{ type, tripId, data: {...}, occurredAt }`. crewMemberId 는 앱 동승자 ID 로 바꾼다 */
+    internal fun parseLiveEvent(event: String, data: String): CrewLiveEvent {
+        val body = JSONObject(data).optJSONObject("data") ?: JSONObject()
+        val passengerOf = store.crewMemberIds.entries.associate { (passengerId, crewMemberId) -> crewMemberId to passengerId }
+        val passengerId = if (body.has("crewMemberId")) passengerOf[body.getLong("crewMemberId")] else null
+        val name = body.optString("nickname")
+        return when (event) {
+            "rider.delayed" -> CrewLiveEvent.RiderDelayed(passengerId, name, body.getInt("minutes"))
+            "rider.here" -> CrewLiveEvent.RiderHere(passengerId, name)
+            "rider.place-changed" -> {
+                val place = PlaceRef(body.getString("placeName"), body.getDouble("latitude"), body.getDouble("longitude"))
+                // 같은 장소를 다시 등록하지 않도록 서버 placeId 를 기억해 둔다
+                store.placeIds = store.placeIds + (place.key to body.getLong("placeId"))
+                CrewLiveEvent.RiderPlaceChanged(passengerId, name, Place(place.name, "", GeoPoint(place.latitude, place.longitude)))
+            }
+            "rider.absent" -> CrewLiveEvent.RiderAbsent(passengerId, name)
+            "receipt.issued" -> CrewLiveEvent.ReceiptIssued
+            "detour.confirm-requested" ->
+                CrewLiveEvent.DetourConfirmRequested(body.getLong("detourId"), body.optString("placeName"), body.getDouble("detourKm"))
+            else -> CrewLiveEvent.Other(event)
+        }
+    }
+
+    // 실시간 알림 [운전자] → 동승자. 저장하지 않는 알림이라 실패해도 다시 보내지 않는다.
+
+    private fun liveTripId(trip: CarpoolTrip): Long? = store.tripIds[trip.id]?.takeIf { it != ServerStore.FAILED_TRIP }
+
+    /** 차량 위치(SDK)와 동승자별 남은 시간·거리(내비 경유지 정보) */
+    suspend fun sendLocation(trip: CarpoolTrip, location: GeoPoint, remains: List<RiderRemain>) {
+        val tripId = liveTripId(trip) ?: return
+        val body = JSONArray(
+            remains.mapNotNull { remain ->
+                store.crewMemberIds[remain.passengerId]?.let {
+                    JSONObject().put("crewMemberId", it)
+                        .put("remainSeconds", remain.remainSeconds ?: JSONObject.NULL)
+                        .put("remainMeters", remain.remainMeters ?: JSONObject.NULL)
+                }
+            },
+        )
+        live("위치") { api.liveLocation(tripId, location.latitude, location.longitude, body) }
+    }
+
+    suspend fun sendApproaching(trip: CarpoolTrip, passengerId: String) {
+        val tripId = liveTripId(trip) ?: return
+        val crewMemberId = store.crewMemberIds[passengerId] ?: return
+        live("곧 도착") { api.liveApproaching(tripId, crewMemberId) }
+    }
+
+    suspend fun sendArrived(trip: CarpoolTrip, passengerId: String) {
+        val tripId = liveTripId(trip) ?: return
+        val crewMemberId = store.crewMemberIds[passengerId] ?: return
+        live("차 도착") { api.liveArrived(tripId, crewMemberId) }
+    }
+
+    /** 아직 안 탄 동승자들에게 운전자 지각 알림 */
+    suspend fun sendDriverDelay(trip: CarpoolTrip, minutes: Int) {
+        val tripId = liveTripId(trip) ?: return
+        live("운전자 지각") { api.liveDriverDelay(tripId, minutes) }
+    }
+
+    private suspend fun live(what: String, block: suspend () -> Unit) {
+        try {
+            block()
+        } catch (e: Exception) {
+            log("실시간 알림($what)을 보내지 못했습니다: $e")
+        }
+    }
+
+    // 우회 거리: 동승자가 합류한 뒤 한 번 산출해 등록하고 운전자 몫을 확인한다
+
+    /**
+     * 아직 등록하지 않은 (동승자, 탈 지점)마다 [detourKmOf] 로 우회 거리를 구해 올린다.
+     * 동승자도 확인해야(동승자 웹) 정산에 쓴다.
+     */
+    suspend fun registerDetours(trip: CarpoolTrip, detourKmOf: suspend (com.paircar.domain.model.Passenger) -> Double?) {
+        val targets = trip.acceptedPassengers.filter { p ->
+            p.id in store.crewMemberIds && detourKey(p) !in store.registeredDetours
+        }
+        if (targets.isEmpty()) return
+        val measured = targets.mapNotNull { p -> detourKmOf(p)?.let { p to roundTenth(it.coerceAtLeast(0.0)) } }
+        mutex.withLock {
+            if (!ensureReady()) return@withLock
+            val crewId = store.crewId ?: return@withLock
+            val driver = store.driverCrewMemberId ?: return@withLock
+            measured.forEach { (passenger, km) ->
+                try {
+                    val detour = api.registerDetour(crewId, store.crewMemberIds.getValue(passenger.id), driver, placeId(passenger.pickup.ref()), km)
+                    api.confirmDetour(crewId, detour.getLong("detourId"))
+                    store.registeredDetours = store.registeredDetours + detourKey(passenger)
+                    log("우회 거리 등록: ${passenger.name} ${passenger.pickup.name} ${km}km")
+                } catch (e: Exception) {
+                    log("우회 거리를 등록하지 못했습니다: ${passenger.name} $e")
+                }
+            }
+        }
+    }
+
+    private fun detourKey(passenger: com.paircar.domain.model.Passenger) = "${passenger.id}@${passenger.pickup.ref().key}"
 
     // 정산 (월 영수증)
 
@@ -405,6 +572,7 @@ class ServerSync(
         missing.forEach { passenger ->
             val joined = api.joinAsNewMember(code, passenger.name)
             store.crewMemberIds = store.crewMemberIds + (passenger.id to joined.getLong("crewMemberId"))
+            store.seededRiderTokens = store.seededRiderTokens + (passenger.id to joined.getString("token"))
         }
         log("예시 동승자 ${missing.size}명을 서버 크루에 가입시켰습니다")
     }
@@ -458,6 +626,9 @@ class ServerSync(
         /** 정산 화면 기본값과 같은 값 (운전자가 아직 정하지 않았을 때) */
         const val DEFAULT_EFFICIENCY = 5.5
         const val DEFAULT_CHARGE_PRICE_WON = 347
+
+        /** 실시간 구독이 끊겼을 때 다시 연결하기까지 */
+        const val LIVE_RECONNECT_MILLIS = 3_000L
 
         /** 토큰이 무효라 새 멤버로 다시 준비할 때 */
         const val RESET_RETRY_MILLIS = 1_000L

@@ -43,6 +43,9 @@ interface CarpoolRepository {
     /** 오늘 운행 참석 여부 (불참이면 경유지에서 빠진다) */
     suspend fun updateAttendance(passengerId: String, attendance: Attendance)
 
+    /** 동승자가 오늘 탈 지점을 바꿨다 (동승자 웹 → 서버 → 실시간 알림). 바뀌기 전 지점은 경유지 변경 알림에 쓴다 */
+    suspend fun updatePickup(passengerId: String, pickup: Place)
+
     /** 크루 이름·출발 시각·반복 요일 */
     suspend fun updateCrewInfo(info: CrewInfo)
 

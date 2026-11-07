@@ -16,6 +16,8 @@ class PairCarApplication : Application() {
         observeNaviEvents()
         // 서버 준비(멤버·크루 등)와 지난번에 못 보낸 운행 기록 보내기
         container.serverSync?.start()
+        // 동승자 알림(SSE) 받기, 운행 중 위치 보내기, 우회 거리 등록
+        container.serverLive?.start()
     }
 
     /**

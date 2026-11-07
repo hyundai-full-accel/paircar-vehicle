@@ -13,6 +13,7 @@ import com.paircar.domain.model.CrewInvite
 import com.paircar.domain.model.InviteLinks
 import com.paircar.domain.model.MatchStatus
 import com.paircar.domain.model.Passenger
+import com.paircar.domain.model.Place
 import com.paircar.domain.repository.CarpoolRepository
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -73,6 +74,10 @@ class MockCarpoolRepository(
     override suspend fun updateAttendance(passengerId: String, attendance: Attendance) {
         delay(latencyMillis)
         updatePassenger(passengerId) { it.copy(attendance = attendance) }
+    }
+
+    override suspend fun updatePickup(passengerId: String, pickup: Place) {
+        updatePassenger(passengerId) { if (it.pickup == pickup) it else it.copy(pickup = pickup, previousPickup = it.pickup) }
     }
 
     /** 출발 시각은 아직 출발 전인 오늘 운행에만 반영한다 (진행 중인 운행의 시각은 바꾸지 않는다) */

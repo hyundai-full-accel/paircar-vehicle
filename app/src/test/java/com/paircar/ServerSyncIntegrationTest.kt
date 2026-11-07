@@ -19,6 +19,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
@@ -137,12 +138,123 @@ class ServerSyncIntegrationTest {
     }
 }
 
+/**
+ * 실시간 흐름: 동승자 웹 → 서버 → SSE → 차량 앱(운행 반영), 차량 앱 → 서버 → 동승자 SSE.
+ * 동승자 웹 동작은 개발용으로 대신 가입시킨 동승자 토큰으로 흉내 낸다.
+ */
+class ServerLiveIntegrationTest {
+
+    private val baseUrl: String? = System.getProperty("paircar.server")
+
+    @Test
+    fun `동승자 알림이 SSE 로 와서 운행에 반영되고 운전자 알림은 동승자에게 간다`() = runBlocking {
+        assumeTrue("서버 주소(-PpaircarServer)가 없어 건너뜀", !baseUrl.isNullOrBlank())
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val store = MemoryServerStore()
+        val api = PairCarApi(baseUrl!!) { store.token }
+        val local = MockCarpoolRepository(latencyMillis = 0)
+        val energy = object : VehicleEnergyRepository {
+            override suspend fun read() = VehicleEnergy(cumulativeEvEfficiency = 5.2, odometerKm = 2000.0)
+        }
+        val settings = SettlementSettings(account = ReceiverAccount("테스트은행", "000-0000-0000"))
+        val sync = ServerSync(api, store, local, { settings }, energy, scope, seedPassengers = true, log = { println("[sync] $it") }, retryDelayMillis = 60_000)
+        val repo = ServerCarpoolRepository(local, sync, scope)
+        val navi = com.paircar.vehicle.navi.MockNaviRepository(scope, connectDelayMillis = 0).also { it.connect() }
+        val routeSync = com.paircar.domain.usecase.CarpoolRouteSync(navi)
+        val notices = java.util.Collections.synchronizedList(mutableListOf<String>())
+        val apply = com.paircar.domain.usecase.ApplyCrewLiveEventUseCase(local, routeSync, notify = { t, _ -> notices += t })
+
+        sync.flush()
+        sync.refreshCrew()
+        val trip = local.todayTrip.value!!
+        val rider = trip.pendingPickups.first()
+        routeSync.request(trip)
+        repo.updateTripStatus(CarpoolStatus.IN_PROGRESS)
+        sync.flush()
+        val tripId = store.tripIds.getValue(trip.id)
+        val riderCrewMemberId = store.crewMemberIds.getValue(rider.id)
+
+        // 차량 앱 구독 → 받은 알림을 운행에 반영
+        val received = java.util.Collections.synchronizedList(mutableListOf<com.paircar.domain.model.CrewLiveEvent>())
+        scope.launch { sync.liveEvents.collect { received += it; apply(it) } }
+        sync.startLive()
+        withTimeout(5_000) { sync.liveConnected.first { it } }
+
+        // 동승자 웹 구독
+        val riderToken = store.seededRiderTokens.getValue(rider.id)
+        val riderApi = PairCarApi(baseUrl) { riderToken }
+        val riderEvents = java.util.Collections.synchronizedList(mutableListOf<String>())
+        scope.launch { riderApi.streamEvents(riderApi.liveTicket()) { event, _ -> riderEvents += event } }
+        waitUntil { "connected" in riderEvents }
+
+        // 동승자 웹: 늦어요 → 나와 있어요 → 탈 지점 변경 → 불참
+        val newPlace = api.registerPlace(store.crewId!!, "판교역 4번 출구", 37.3955, 127.1120).getLong("placeId")
+        riderCall(riderToken, "POST", "/api/trips/$tripId/live/me/delay", """{"minutes":5}""")
+        riderCall(riderToken, "POST", "/api/trips/$tripId/live/me/here", null)
+        riderCall(riderToken, "PUT", "/api/trips/$tripId/boardings/$riderCrewMemberId/board-place", """{"placeId":$newPlace}""")
+        waitUntil { received.any { it is com.paircar.domain.model.CrewLiveEvent.RiderPlaceChanged } }
+        waitUntil { local.todayTrip.value!!.passengers.first { it.id == rider.id }.pickup.name == "판교역 4번 출구" }
+        // 남은 경유지(= 내비에 다시 요청한 경유지)가 새 지점으로 바뀐다
+        assertEquals("판교역 4번 출구", routeWaypoint(local))
+
+        // 차량 앱 → 동승자: 위치·곧 도착·차 도착, 우회 거리 확인 요청 (불참하기 전, 아직 탈 사람에게)
+        sync.sendLocation(trip, com.paircar.core.model.GeoPoint(37.45, 127.05), listOf(com.paircar.data.server.RiderRemain(rider.id, 120, 800)))
+        sync.sendApproaching(trip, rider.id)
+        sync.sendArrived(trip, rider.id)
+        sync.registerDetours(local.todayTrip.value!!) { 3.0 }
+        waitUntil { riderEvents.containsAll(listOf("vehicle.location", "vehicle.approaching", "vehicle.arrived", "detour.confirm-requested")) }
+        println("[rider] $riderEvents")
+        assertEquals(local.todayTrip.value!!.acceptedPassengers.count { it.id in store.crewMemberIds }, store.registeredDetours.size)
+
+        riderCall(riderToken, "DELETE", "/api/trips/$tripId/boardings/$riderCrewMemberId", null)
+        waitUntil { local.todayTrip.value!!.passengers.first { it.id == rider.id }.attendance == com.paircar.domain.model.Attendance.ABSENT }
+        println("[received] $received")
+        println("[notices] $notices")
+        assertEquals(
+            listOf("${rider.name}님이 5분 늦어요", "${rider.name}님이 나와 있어요", "${rider.name}님이 판교역 4번 출구에서 타요", "${rider.name}님이 오늘은 안 타요"),
+            notices.toList(),
+        )
+        assertTrue(received.first() is com.paircar.domain.model.CrewLiveEvent.RiderDelayed)
+        assertEquals(rider.id, (received.first() as com.paircar.domain.model.CrewLiveEvent.RiderDelayed).passengerId)
+        // 불참한 동승자는 경유지에서 빠진다
+        assertTrue(routeWaypoint(local) != "판교역 4번 출구")
+
+        sync.stopLive()
+        scope.cancel()
+    }
+
+    private fun routeWaypoint(local: MockCarpoolRepository): String? =
+        com.paircar.domain.usecase.remainingWaypoints(local.todayTrip.value!!).firstOrNull()?.name
+
+    private suspend fun waitUntil(condition: () -> Boolean) = withTimeout(5_000) {
+        while (!condition()) kotlinx.coroutines.delay(50)
+    }
+
+    private fun riderCall(token: String, method: String, path: String, body: String?) {
+        val connection = (java.net.URL(baseUrl!!.trimEnd('/') + path).openConnection() as java.net.HttpURLConnection).apply {
+            requestMethod = method
+            setRequestProperty("Authorization", "Bearer $token")
+            if (body != null) {
+                doOutput = true
+                setRequestProperty("Content-Type", "application/json")
+                outputStream.use { it.write(body.toByteArray()) }
+            }
+        }
+        val status = connection.responseCode
+        val text = (if (status < 300) connection.inputStream else connection.errorStream)?.bufferedReader()?.readText()
+        assertTrue("$method $path → $status $text", status in 200..299)
+    }
+}
+
 private class MemoryServerStore : ServerStore {
     override var token: String? = null
     override var memberId: Long? = null
     override var crewId: Long? = null
     override var carId: Long? = null
     override val vehicleKey: String = "test-" + UUID.randomUUID()
+    override var driverCrewMemberId: Long? = null
+    override var registeredDetours: Set<String> = emptySet()
+    override var seededRiderTokens: Map<String, String> = emptyMap()
     override var placeIds: Map<String, Long> = emptyMap()
     override var crewMemberIds: Map<String, Long> = emptyMap()
     override var tripIds: Map<String, Long> = emptyMap()
@@ -151,7 +263,8 @@ private class MemoryServerStore : ServerStore {
     override var syncedAccountHash: String? = null
     override var syncedFuelPrice: String? = null
     override fun reset() {
-        token = null; memberId = null; crewId = null; carId = null
+        token = null; memberId = null; crewId = null; carId = null; driverCrewMemberId = null
+        registeredDetours = emptySet(); seededRiderTokens = emptyMap()
         placeIds = emptyMap(); crewMemberIds = emptyMap(); tripIds = emptyMap()
         syncedAccountHash = null; syncedFuelPrice = null
     }

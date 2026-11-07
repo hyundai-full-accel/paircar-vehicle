@@ -16,7 +16,9 @@ import com.paircar.data.remote.OsrmRoutePreviewRepository
 import com.paircar.data.server.PairCarApi
 import com.paircar.data.server.PrefsServerStore
 import com.paircar.data.server.ServerCarpoolRepository
+import com.paircar.data.server.ServerLiveCoordinator
 import com.paircar.data.server.ServerSettlementRepository
+import com.paircar.domain.usecase.ApplyCrewLiveEventUseCase
 import com.paircar.data.server.ServerSettlementSettingsStore
 import com.paircar.data.server.ServerSync
 import com.paircar.domain.repository.RoutePreviewRepository
@@ -34,6 +36,8 @@ import com.paircar.domain.usecase.StartCarpoolGuidanceUseCase
 import com.paircar.domain.usecase.TripRecorder
 import com.paircar.vehicle.energy.PleosVehicleEnergyRepository
 import com.paircar.vehicle.navi.NaviRepositoryFactory
+import com.paircar.vehicle.tts.Speaker
+import com.paircar.vehicle.tts.VehicleSpeaker
 import com.paircar.vehicle.state.CarDrivingStateRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -109,6 +113,9 @@ class AppContainer(context: Context) {
 
     val pickupNotifier = PickupNotifier(context)
 
+    /** 운전자 음성 안내 (Pleos TextToSpeech SDK, 못 쓰면 안드로이드 기본 TTS) */
+    val speaker: Speaker = VehicleSpeaker(context)
+
     val vehicleCheckStore: VehicleCheckStore = PrefsVehicleCheckStore(context)
 
     val tripRecorder = TripRecorder(tripRecordRepository, vehicleEnergyRepository, routePreviewRepository, tripStores)
@@ -120,4 +127,33 @@ class AppContainer(context: Context) {
     val finishCarpool = FinishCarpoolUseCase(carpoolRepository, tripRecorder)
 
     val applyNaviEvent = ApplyNaviEventUseCase(carpoolRepository, finishCarpool, routeSync)
+
+    /** 서버 실시간 구독(SSE)·위치 보내기·우회 거리. 서버가 없으면 null */
+    val serverLive: ServerLiveCoordinator? = serverSync?.let { sync ->
+        var notificationId = LIVE_NOTIFICATION_ID
+        ServerLiveCoordinator(
+            sync = sync,
+            carpool = carpoolRepository,
+            navi = naviRepository,
+            routes = routePreviewRepository,
+            // 서버에서 온 변경은 서버로 되돌려 보내지 않도록 앱 저장소(local)에 직접 반영한다
+            applyEvent = ApplyCrewLiveEventUseCase(
+                carpool = localCarpoolRepository,
+                routeSync = routeSync,
+                notify = { title, text ->
+                    Log.i("PairCarServer", "알림: $title · $text")
+                    pickupNotifier.post(notificationId++, title, text)
+                    // 주행 중에는 화면을 보지 않아도 되도록 소리로도 알린다 ("차수아님이 5분 늦어요")
+                    speaker.speak(title)
+                },
+                onReceiptIssued = { settlementRepository.refresh() },
+            ),
+            scope = applicationScope,
+            log = { Log.i("PairCarServer", it) },
+        )
+    }
+
+    private companion object {
+        const val LIVE_NOTIFICATION_ID = 2000
+    }
 }

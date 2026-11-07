@@ -83,6 +83,76 @@ class PairCarApi(
     suspend fun issueReceipts(crewId: Long, month: String): JSONArray =
         call("POST", "/api/crews/$crewId/receipts?month=$month") as JSONArray
 
+    // 우회 거리 (passengerId·driverId 는 crewMemberId)
+
+    suspend fun registerDetour(crewId: Long, passengerId: Long, driverId: Long, placeId: Long, detourKm: Double): JSONObject =
+        call(
+            "PUT", "/api/crews/$crewId/detours",
+            JSONObject().put("passengerId", passengerId).put("driverId", driverId).put("placeId", placeId).put("detourKm", detourKm),
+        ) as JSONObject
+
+    suspend fun confirmDetour(crewId: Long, detourId: Long): JSONObject =
+        call("POST", "/api/crews/$crewId/detours/$detourId/confirm") as JSONObject
+
+    // 실시간 알림 [운전자] (저장하지 않고 동승자에게 바로 전달)
+
+    suspend fun liveLocation(tripId: Long, latitude: Double, longitude: Double, remainsByRider: JSONArray) {
+        call(
+            "POST", "/api/trips/$tripId/live/location",
+            JSONObject().put("latitude", latitude).put("longitude", longitude).put("remainsByRider", remainsByRider),
+        )
+    }
+
+    suspend fun liveApproaching(tripId: Long, crewMemberId: Long) {
+        call("POST", "/api/trips/$tripId/live/riders/$crewMemberId/approaching")
+    }
+
+    suspend fun liveArrived(tripId: Long, crewMemberId: Long) {
+        call("POST", "/api/trips/$tripId/live/riders/$crewMemberId/arrived")
+    }
+
+    suspend fun liveDriverDelay(tripId: Long, minutes: Int) {
+        call("POST", "/api/trips/$tripId/live/delay", JSONObject().put("minutes", minutes))
+    }
+
+    // 실시간 구독 (SSE)
+
+    /** 60초짜리 일회용 구독 티켓. 토큰이 URL·로그에 남지 않도록 구독 주소에는 티켓만 넣는다 */
+    suspend fun liveTicket(): String = (call("POST", "/api/live/tickets") as JSONObject).getString("ticket")
+
+    /**
+     * SSE 를 구독해 이벤트마다 [onEvent](이벤트 이름, data) 를 부른다. 연결이 끊기면 돌아온다.
+     * 서버는 25초마다 keepalive 주석을 보내므로 그보다 길게 아무것도 안 오면 끊긴 것으로 본다.
+     */
+    suspend fun streamEvents(ticket: String, onEvent: suspend (event: String, data: String) -> Unit) = withContext(Dispatchers.IO) {
+        val connection = (URL(baseUrl.trimEnd('/') + "/api/live/events?ticket=" + ticket).openConnection() as HttpURLConnection).apply {
+            connectTimeout = TIMEOUT_MS
+            readTimeout = SSE_READ_TIMEOUT_MS
+            setRequestProperty("Accept", "text/event-stream")
+        }
+        try {
+            val status = try {
+                connection.responseCode
+            } catch (e: IOException) {
+                throw ApiException(0, "NETWORK", e.message ?: e.javaClass.simpleName)
+            }
+            if (status != 200) {
+                val text = connection.errorStream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
+                val error = runCatching { JSONObject(text).getJSONObject("error") }.getOrNull()
+                throw ApiException(status, error?.optString("code") ?: "HTTP_$status", error?.optString("message") ?: text.take(200))
+            }
+            val parser = SseParser()
+            connection.inputStream.bufferedReader(Charsets.UTF_8).use { reader ->
+                while (true) {
+                    val line = reader.readLine() ?: break
+                    parser.feed(line)?.let { (event, data) -> onEvent(event, data) }
+                }
+            }
+        } finally {
+            connection.disconnect()
+        }
+    }
+
     // 운행 (모든 응답은 운행 전체 상태 TripResult)
 
     suspend fun startTrip(body: JSONObject): JSONObject = call("POST", "/api/trips", body) as JSONObject
@@ -154,5 +224,36 @@ class PairCarApi(
 
     private companion object {
         const val TIMEOUT_MS = 10_000
+        const val SSE_READ_TIMEOUT_MS = 60_000
+    }
+}
+
+/**
+ * SSE 줄 단위 파서 (text/event-stream). 빈 줄에서 이벤트 하나를 끝낸다.
+ * `:` 로 시작하는 줄은 주석(keepalive)이라 버린다. data 가 여러 줄이면 줄바꿈으로 잇는다.
+ */
+class SseParser {
+    private var event: String? = null
+    private val data = StringBuilder()
+
+    /** 이벤트가 끝났으면 (이벤트 이름, data) */
+    fun feed(line: String): Pair<String, String>? {
+        if (line.isEmpty()) {
+            val done = if (data.isNotEmpty() || event != null) (event ?: "message") to data.toString() else null
+            event = null
+            data.clear()
+            return done
+        }
+        if (line.startsWith(":")) return null
+        val field = line.substringBefore(':')
+        val value = line.substringAfter(':', "").removePrefix(" ")
+        when (field) {
+            "event" -> event = value
+            "data" -> {
+                if (data.isNotEmpty()) data.append('\n')
+                data.append(value)
+            }
+        }
+        return null
     }
 }
