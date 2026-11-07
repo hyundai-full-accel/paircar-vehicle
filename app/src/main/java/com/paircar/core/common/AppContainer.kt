@@ -6,6 +6,7 @@ import com.paircar.core.notification.PickupNotifier
 import com.paircar.data.local.LocalTripRecordRepository
 import com.paircar.data.local.PrefsTripStores
 import com.paircar.data.local.KeystoreAccountCipher
+import com.paircar.data.local.PrefsCrewInfoStore
 import com.paircar.data.local.PrefsSettlementSettingsStore
 import com.paircar.data.mock.MockCarpoolRepository
 import com.paircar.data.mock.MockSettlementRepository
@@ -45,6 +46,7 @@ class AppContainer(context: Context) {
     val carpoolRepository: CarpoolRepository = MockCarpoolRepository(
         inviteBaseUrl = BuildConfig.INVITE_BASE_URL,
         stateStore = tripStores,
+        crewInfoStore = PrefsCrewInfoStore(context),
     )
 
     // 정산 서버 확정 후 교체

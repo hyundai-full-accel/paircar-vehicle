@@ -126,3 +126,40 @@ fun InfoIcon(modifier: Modifier, color: Color = DsColors.OnSurfaceMuted) {
         drawLine(color, Offset(center.x, center.y - r * 0.12f), Offset(center.x, center.y + r * 0.48f), stroke, StrokeCap.Round)
     }
 }
+
+/** 📍 장소 (도착지·경유지) */
+@Composable
+fun PinIcon(modifier: Modifier, color: Color = DsColors.OnSurface) {
+    Canvas(modifier) {
+        val w = size.width
+        val h = size.height
+        val r = w * 0.3f
+        val cy = h * 0.38f
+        val path = Path().apply {
+            moveTo(center.x, h * 0.92f)
+            cubicTo(center.x - r * 0.4f, h * 0.72f, center.x - r * 1.05f, cy + r * 0.7f, center.x - r, cy)
+            cubicTo(center.x - r, cy - r * 1.35f, center.x + r, cy - r * 1.35f, center.x + r, cy)
+            cubicTo(center.x + r * 1.05f, cy + r * 0.7f, center.x + r * 0.4f, h * 0.72f, center.x, h * 0.92f)
+            close()
+        }
+        drawPath(path, color)
+        drawCircle(DsColors.Surface, r * 0.38f, Offset(center.x, cy))
+    }
+}
+
+/** ➤ 현재 위치·출발지 (기울어진 화살촉) */
+@Composable
+fun DepartIcon(modifier: Modifier, color: Color = DsColors.OnSurface) {
+    Canvas(modifier) {
+        val w = size.width
+        val h = size.height
+        val path = Path().apply {
+            moveTo(w * 0.86f, h * 0.14f)
+            lineTo(w * 0.14f, h * 0.44f)
+            lineTo(w * 0.46f, h * 0.54f)
+            lineTo(w * 0.56f, h * 0.86f)
+            close()
+        }
+        drawPath(path, color)
+    }
+}

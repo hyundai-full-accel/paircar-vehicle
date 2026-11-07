@@ -1,10 +1,12 @@
 package com.paircar.domain.repository
 
 import com.paircar.core.model.GeoPoint
+import com.paircar.domain.model.Attendance
 import com.paircar.domain.model.BoardingStatus
 import com.paircar.domain.model.CarpoolStatus
 import com.paircar.domain.model.CarpoolTrip
 import com.paircar.domain.model.Crew
+import com.paircar.domain.model.CrewInfo
 import com.paircar.domain.model.CrewInvite
 import com.paircar.domain.model.DrivingState
 import com.paircar.domain.model.GuidanceState
@@ -36,6 +38,12 @@ interface CarpoolRepository {
     suspend fun updateMatchStatus(passengerId: String, status: MatchStatus)
     suspend fun updateBoardingStatus(passengerId: String, status: BoardingStatus)
     suspend fun updateTripStatus(status: CarpoolStatus)
+
+    /** 오늘 운행 참석 여부 (불참이면 경유지에서 빠진다) */
+    suspend fun updateAttendance(passengerId: String, attendance: Attendance)
+
+    /** 크루 이름·출발 시각·반복 요일 */
+    suspend fun updateCrewInfo(info: CrewInfo)
 
     /** 크루 초대 QR 에 넣을 모바일웹 주소를 발급한다. */
     suspend fun createInvite(): CrewInvite

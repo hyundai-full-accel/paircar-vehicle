@@ -1,15 +1,45 @@
 package com.paircar.domain.model
 
+import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.LocalTime
+import java.time.format.TextStyle
+import java.util.Locale
 
 /** 같은 시간·경로로 정기 운행하는 카풀 묶음. 크루원(운전자·동승자)은 [CarpoolTrip] 에서 가져온다. */
 data class Crew(
     val id: String,
     val name: String,
     val startDate: LocalDate,
-    /** "월-금" */
-    val weekdays: String,
+    /** 반복 운행 요일 */
+    val days: Set<DayOfWeek>,
+) {
+    /** 월-금 · 주말 · 매일 · 월·수·목 */
+    val daysLabel: String
+        get() = when (days) {
+            DayOfWeek.entries.toSet() -> "매일"
+            WEEKDAYS -> "월-금"
+            setOf(DayOfWeek.SATURDAY, DayOfWeek.SUNDAY) -> "주말"
+            else -> days.sorted().joinToString("·") { it.korean() }
+        }
+
+    companion object {
+        val WEEKDAYS: Set<DayOfWeek> = DayOfWeek.entries.filter { it.value <= 5 }.toSet()
+    }
+}
+
+/** 월, 화, … */
+fun DayOfWeek.korean(): String = getDisplayName(TextStyle.SHORT, Locale.KOREAN)
+
+/**
+ * [크루 정보 설정]에서 운전자가 바꾸는 값. 출발 시각을 바꾸면 도착·픽업 예정 시각도 같은 만큼 옮긴다.
+ * 출발지·도착지는 장소 검색 연동 전이라 아직 바꿀 수 없다.
+ */
+data class CrewInfo(
+    val name: String,
+    val departureTime: LocalTime,
+    val days: Set<DayOfWeek>,
 )
 
 /**

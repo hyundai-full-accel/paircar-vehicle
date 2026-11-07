@@ -47,7 +47,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.paircar.core.ui.components.ChevronIcon
+import com.paircar.core.ui.components.ChoiceChip
 import com.paircar.core.ui.components.ExpandedWidthThreshold
+import com.paircar.core.ui.components.FieldBox
+import com.paircar.core.ui.components.FieldTextStyle
+import com.paircar.core.ui.components.FormNote
+import com.paircar.core.ui.components.FormSectionTitle
+import com.paircar.core.ui.components.ToggleRow
 import com.paircar.core.ui.components.GrayChip
 import com.paircar.core.ui.components.InScreenModal
 import com.paircar.core.ui.components.InfoIcon
@@ -131,7 +137,7 @@ internal fun BoxScope.SettingsModal(
             }
         }
         HorizontalDivider(color = DsColors.Divider)
-        Note("변경한 기준은 다음 정산부터 적용돼요. 이미 요청한 정산 금액은 바뀌지 않아요.")
+        FormNote("변경한 기준은 다음 정산부터 적용돼요. 이미 요청한 정산 금액은 바뀌지 않아요.")
         error?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = DsColors.Danger) }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             PrimaryActionButton(
@@ -182,17 +188,17 @@ private fun AccountSection(
     modifier: Modifier,
 ) {
     Column(modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        SectionTitle("수취 계좌 등록", "정산 금액을 받을 계좌를 등록해요")
+        FormSectionTitle("수취 계좌 등록", "정산 금액을 받을 계좌를 등록해요")
         BankPicker(bank, onBank)
-        InputBox("계좌번호") {
+        FieldBox("계좌번호") {
             BasicTextField(
                 value = number,
                 onValueChange = { text -> onNumber(text.filter(Char::isDigit).take(AccountDigits.last)) },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                textStyle = InputTextStyle(),
+                textStyle = FieldTextStyle(),
                 decorationBox = { field ->
-                    if (number.isEmpty()) Text("숫자만 입력", style = InputTextStyle().copy(color = DsColors.OnSurfaceMuted))
+                    if (number.isEmpty()) Text("숫자만 입력", style = FieldTextStyle().copy(color = DsColors.OnSurfaceMuted))
                     field()
                 },
                 modifier = Modifier.fillMaxWidth(),
@@ -232,11 +238,11 @@ private fun AccountSection(
 private fun BankPicker(bank: String?, onBank: (String) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     Box {
-        InputBox("은행", Modifier.clickable { expanded = true }) {
+        FieldBox("은행", Modifier.clickable { expanded = true }) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     bank ?: "은행 선택",
-                    style = InputTextStyle().copy(color = if (bank == null) DsColors.OnSurfaceMuted else DsColors.OnSurface),
+                    style = FieldTextStyle().copy(color = if (bank == null) DsColors.OnSurfaceMuted else DsColors.OnSurface),
                     modifier = Modifier.weight(1f),
                 )
                 ChevronIcon(Modifier.size(24.dp).rotate(90f), color = DsColors.OnSurface)
@@ -268,7 +274,7 @@ private fun CostSection(
     modifier: Modifier,
 ) {
     Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        SectionTitle("비용 기준", "매 정산에 적용할 옵션을 설정해요")
+        FormSectionTitle("비용 기준", "매 정산에 적용할 옵션을 설정해요")
         ToggleRow("충전비 포함", "전비와 충전 단가로 계산한 충전 비용", rules.includeCharge) { onRules(rules.copy(includeCharge = it)) }
         if (rules.includeCharge) {
             Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -276,8 +282,8 @@ private fun CostSection(
                 if (vehicleEfficiency == null) {
                     NumberBox("전비 (km/kWh)", efficiency, onEfficiency, decimal = true, Modifier.weight(1f))
                 } else {
-                    InputBox("전비 (차량 값)", Modifier.weight(1f)) {
-                        Text("${vehicleEfficiency.efficiency()} km/kWh", style = InputTextStyle())
+                    FieldBox("전비 (차량 값)", Modifier.weight(1f)) {
+                        Text("${vehicleEfficiency.efficiency()} km/kWh", style = FieldTextStyle())
                     }
                 }
             }
@@ -292,36 +298,8 @@ private fun CostSection(
 }
 
 @Composable
-private fun ToggleRow(title: String, detail: String, checked: Boolean, onChange: (Boolean) -> Unit) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .clickable { onChange(!checked) }
-            .padding(vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.titleMedium)
-            Text(detail, style = MaterialTheme.typography.bodySmall, color = DsColors.OnSurfaceMuted)
-        }
-        Switch(
-            checked = checked,
-            onCheckedChange = onChange,
-            colors = SwitchDefaults.colors(
-                checkedThumbColor = DsColors.Surface,
-                checkedTrackColor = DsColors.Dark,
-                uncheckedThumbColor = DsColors.Surface,
-                uncheckedTrackColor = DsColors.SurfaceHigh,
-                uncheckedBorderColor = DsColors.Divider,
-            ),
-        )
-    }
-}
-
-@Composable
 private fun NumberBox(label: String, value: String, onValue: (String) -> Unit, decimal: Boolean, modifier: Modifier) {
-    InputBox(label, modifier) {
+    FieldBox(label, modifier) {
         BasicTextField(
             value = value,
             onValueChange = { text ->
@@ -329,32 +307,11 @@ private fun NumberBox(label: String, value: String, onValue: (String) -> Unit, d
             },
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = if (decimal) KeyboardType.Decimal else KeyboardType.Number),
-            textStyle = InputTextStyle(),
+            textStyle = FieldTextStyle(),
             modifier = Modifier.fillMaxWidth(),
         )
     }
 }
-
-/** 시안의 입력 칸: 위에 작은 이름, 아래에 값 */
-@Composable
-private fun InputBox(label: String, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
-    Column(
-        modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .border(1.dp, DsColors.Divider, RoundedCornerShape(16.dp))
-            .background(DsColors.Surface)
-            .heightIn(min = 72.dp)
-            .padding(horizontal = 20.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        Text(label, style = MaterialTheme.typography.bodySmall, color = DsColors.OnSurfaceMuted)
-        content()
-    }
-}
-
-@Composable
-private fun InputTextStyle(): TextStyle = MaterialTheme.typography.bodyLarge.copy(color = DsColors.OnSurface)
 
 // ───────────────────────── 분담 내역 확인 ─────────────────────────
 
@@ -398,7 +355,7 @@ internal fun BoxScope.BreakdownModal(
             },
             right = { modifier -> MonthlyCost(settlement, receipts, member, modifier) },
         )
-        Note("운행별 금액은 이번 달 탑승 거리를 탄 횟수로 고르게 나눈 값이에요. 월 금액은 합계에서 한 번만 올림해요.")
+        FormNote("운행별 금액은 이번 달 탑승 거리를 탄 횟수로 고르게 나눈 값이에요. 월 금액은 합계에서 한 번만 올림해요.")
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             PrimaryActionButton("확인", onClose, Modifier.weight(1f))
             TonalActionButton("닫기", onClose, Modifier.weight(1f))
@@ -476,7 +433,7 @@ internal fun BoxScope.ProgressModal(
             right = { modifier -> MonthlyCost(settlement, receipts, member, modifier) },
         )
         when {
-            settlement.requestedAt != null -> Note(
+            settlement.requestedAt != null -> FormNote(
                 "${settlement.requestedAt.monthValue}월 ${settlement.requestedAt.dayOfMonth}일에 정산 금액을 확정했어요. 동승자 알림은 정산 서버 연동 후 보낼 수 있어요.",
             )
             settlement.receiverAccount == null -> Row(
@@ -488,8 +445,8 @@ internal fun BoxScope.ProgressModal(
                 Text("수취 계좌 미등록 / 계좌 등록 후 요청 가능", style = MaterialTheme.typography.bodySmall, color = DsColors.OnSurfaceMuted)
                 Text("계좌 등록 ›", style = MaterialTheme.typography.labelMedium)
             }
-            settlement.totalDueWon == 0L -> Note("받을 금액이 없어 요청할 정산이 없어요.")
-            else -> Note("요청하면 지금 기준으로 이번 달 금액이 확정돼요. 동승자 알림은 정산 서버 연동 후 보낼 수 있어요.")
+            settlement.totalDueWon == 0L -> FormNote("받을 금액이 없어 요청할 정산이 없어요.")
+            else -> FormNote("요청하면 지금 기준으로 이번 달 금액이 확정돼요. 동승자 알림은 정산 서버 연동 후 보낼 수 있어요.")
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             PrimaryActionButton(if (settlement.requested) "요청 완료" else "정산 요청", onRequest, Modifier.weight(1f), enabled = canRequest)
@@ -542,21 +499,6 @@ private fun MemberChips(settlement: MonthlySettlement, selected: String?, onSele
             ChoiceChip("${member.name}(${member.rides}회)", selected == member.name) { onSelect(member.name) }
         }
     }
-}
-
-@Composable
-private fun ChoiceChip(text: String, selected: Boolean, onClick: () -> Unit) {
-    Text(
-        text,
-        style = MaterialTheme.typography.labelMedium.copy(fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal),
-        color = if (selected) DsColors.OnSurface else DsColors.OnSurfaceMuted,
-        modifier = Modifier
-            .clip(RoundedCornerShape(50))
-            .background(if (selected) DsColors.Segment else DsColors.Background)
-            .border(1.dp, if (selected) DsColors.OnSurfaceMuted.copy(alpha = 0.3f) else Color.Transparent, RoundedCornerShape(50))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 18.dp, vertical = 10.dp),
-    )
 }
 
 /** 월별 비용 산정: 횟수·거리, 항목별 금액, 최종 분담 금액 */
@@ -622,22 +564,7 @@ private fun EmptyText(text: String) {
 }
 
 @Composable
-private fun SectionTitle(title: String, detail: String) {
-    Column(Modifier.padding(bottom = 4.dp)) {
-        Text(title, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
-        Text(detail, style = MaterialTheme.typography.bodySmall, color = DsColors.OnSurfaceMuted)
-    }
-}
-
-@Composable
 private fun SubTitle(text: String) {
     Text(text, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
 }
 
-@Composable
-private fun Note(text: String) {
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-        InfoIcon(Modifier.size(18.dp))
-        Text(text, style = MaterialTheme.typography.bodySmall, color = DsColors.OnSurfaceMuted)
-    }
-}
