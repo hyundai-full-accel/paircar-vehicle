@@ -73,6 +73,7 @@ fun NaviPocScreen(state: NaviPocUiState, viewModel: NaviPocViewModel) {
                         viewModel.postTestNotification()
                     }
                 })
+                SecondaryActionButton("음성 안내 테스트", viewModel::speakTest)
                 SecondaryActionButton("주행 시뮬레이션", { viewModel.setSimulatedDriving(true) })
                 SecondaryActionButton("정차 시뮬레이션", { viewModel.setSimulatedDriving(false) })
                 SecondaryActionButton("시뮬레이션 해제", { viewModel.setSimulatedDriving(null) })

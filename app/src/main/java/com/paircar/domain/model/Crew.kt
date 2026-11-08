@@ -53,7 +53,31 @@ data class CrewInfo(
     val name: String,
     val departureTime: LocalTime,
     val days: Set<DayOfWeek>,
+    /** 바꾼 출발지·도착지. null 이면 그대로 둔다 */
+    val origin: Place? = null,
+    val destination: Place? = null,
 )
+
+/** [크루 만들기]에서 정하는 값: 크루 이름과 반복 운행 일정 */
+data class CrewSetup(
+    val name: String,
+    val departureTime: LocalTime,
+    val days: Set<DayOfWeek>,
+    val origin: Place,
+    val destination: Place,
+)
+
+/** 오늘의 카풀을 보여줄 수 있는지 */
+enum class CrewSetupState {
+    /** 서버에서 크루를 받는 중 */
+    LOADING,
+
+    /** 크루가 없거나 출발지·도착지·출발 시각이 없어 [크루 만들기]가 필요 */
+    NEEDS_SETUP,
+
+    /** 크루 일정이 있다 (오늘 운행을 만들 수 있다) */
+    READY,
+}
 
 /**
  * QR 초대. QR 에는 [url] 이 들어가고, 휴대폰으로 스캔하면 모바일웹 가입 화면이 열린다.

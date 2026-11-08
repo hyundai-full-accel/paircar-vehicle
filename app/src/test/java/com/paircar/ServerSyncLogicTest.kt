@@ -123,6 +123,17 @@ class ServerSettlementTest {
     }
 
     @Test
+    fun `서버 내 부담 거리에는 우회 거리가 들어 있어 함께 탄 몫과 나눠 보여준다`() {
+        val withDetour = receipt.copy(ownDistanceKm = 13.0, detourKm = 3.0)
+        val shown = com.paircar.data.server.issuedSettlement(java.time.YearMonth.of(2026, 11), "크루", listOf(withDetour), emptyList())
+            .receipts.single()
+        assertEquals(10.0, shown.sharedShareKm, 0.0)
+        assertEquals(3.0, shown.detourKm, 0.0)
+        assertEquals(13.0, shown.burdenKm, 0.0)
+        assertEquals(2, shown.member.headcount)
+    }
+
+    @Test
     fun `면제한 영수증은 받을 금액이 없다`() {
         val settlement = com.paircar.data.server.issuedSettlement(java.time.YearMonth.of(2026, 11), "크루", listOf(receipt.copy(waived = true)), emptyList())
         assertEquals(0, settlement.totalDueWon)

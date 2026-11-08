@@ -52,6 +52,26 @@ class ApplyCrewLiveEventUseCase(
                 notify("${event.name}님이 오늘은 안 타요", if (passenger != null) "경유지에서 뺐어요" else "오늘 운행에서 빠져요")
             }
 
+            is CrewLiveEvent.RiderAttendanceChanged -> {
+                val trip = carpool.todayTrip.value
+                val passenger = passenger(event)
+                // 오늘 운행이고 아직 출발 전일 때만 경유지에 반영한다 (출발 뒤 변경은 서버도 운행에 반영하지 않는다)
+                val applies = passenger != null && trip?.date == event.date && trip.status == CarpoolStatus.SCHEDULED
+                if (applies) {
+                    carpool.updateAttendance(passenger!!.id, if (event.attending) Attendance.ATTENDING else Attendance.ABSENT)
+                    event.pickup?.takeIf { it.name != passenger.pickup.name || it.point != passenger.pickup.point }?.let { pickup ->
+                        carpool.updatePickup(passenger.id, pickup.copy(address = passenger.pickup.address))
+                    }
+                }
+                val day = if (trip?.date == event.date) "오늘" else "${event.date.monthValue}월 ${event.date.dayOfMonth}일"
+                val title = when {
+                    !event.attending -> "${event.name}님이 ${day}은 안 타요"
+                    event.pickup != null -> "${event.name}님이 ${day}은 ${event.pickup.name}에서 타요"
+                    else -> "${event.name}님이 ${day} 타요"
+                }
+                notify(title, if (applies) "오늘 경유지에 반영했어요" else "출석이 바뀌었어요")
+            }
+
             CrewLiveEvent.ReceiptIssued -> onReceiptIssued()
 
             is CrewLiveEvent.DetourConfirmRequested, is CrewLiveEvent.Other -> Unit

@@ -1,6 +1,8 @@
 package com.paircar.data.server
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -12,7 +14,13 @@ import java.net.URL
  * 서버 오류. [code] 는 서버의 `error.code` (네트워크 오류면 NETWORK).
  * 문서 규칙: 5xx·429 는 잠시 뒤 다시 보내고, 그 밖의 4xx 는 다시 보내도 실패한다.
  */
-class ApiException(val status: Int, val code: String, message: String) : IOException("$status $code: $message") {
+class ApiException(
+    val status: Int,
+    val code: String,
+    message: String,
+    /** 실패 응답에도 오는 data (예: TRIP_ALREADY_IN_PROGRESS 의 { tripId, crewId }) */
+    val data: JSONObject? = null,
+) : IOException("$status $code: $message") {
     val retryable: Boolean
         get() = status == 0 || status == 429 || status >= 500
 }
@@ -48,6 +56,21 @@ class PairCarApi(
             JSONObject().put("vehicleKey", vehicleKey).put("fuelType", fuelType).put("manualFuelEconomy", manualFuelEconomy ?: JSONObject.NULL),
         ) as JSONObject
 
+    suspend fun car(carId: Long): JSONObject = call("GET", "/api/cars/$carId") as JSONObject
+
+    /**
+     * 차량 수정. 바꿀 수 있는 값 전체를 보내고 null 은 그 값을 지운다.
+     * 충전 단가(원/kWh)는 크루가 아니라 차량 값이다 (정산은 운행에 쓴 차의 단가, 없으면 공공 월평균).
+     */
+    suspend fun updateCar(carId: Long, fuelType: String, manualFuelEconomy: Double?, manualFuelPriceWon: Int?): JSONObject =
+        call(
+            "PUT", "/api/cars/$carId",
+            JSONObject()
+                .put("fuelType", fuelType)
+                .put("manualFuelEconomy", manualFuelEconomy ?: JSONObject.NULL)
+                .put("manualFuelPriceWon", manualFuelPriceWon ?: JSONObject.NULL),
+        ) as JSONObject
+
     // 크루
 
     suspend fun createCrew(name: String): JSONObject =
@@ -65,13 +88,39 @@ class PairCarApi(
             JSONObject().put("name", name).put("latitude", latitude).put("longitude", longitude),
         ) as JSONObject
 
+    suspend fun places(crewId: Long): JSONArray = call("GET", "/api/crews/$crewId/places") as JSONArray
+
     suspend fun createInvite(crewId: Long): JSONObject = call("POST", "/api/crews/$crewId/invites") as JSONObject
 
     suspend fun joinAsNewMember(code: String, nickname: String): JSONObject =
         call("POST", "/api/invites/$code/members", JSONObject().put("nickname", nickname), auth = false) as JSONObject
 
-    suspend fun changeFuelPrice(crewId: Long, priceWon: Int?): JSONObject =
-        call("PUT", "/api/crews/$crewId/fuel-price", JSONObject().put("priceWon", priceWon ?: JSONObject.NULL)) as JSONObject
+    /**
+     * 크루 설정 (차를 등록한 멤버만). 바꿀 수 있는 값 전체를 보내고 null 은 지운다.
+     * departureTime 은 KST "HH:mm", departureDays 는 MONDAY … SUNDAY.
+     */
+    suspend fun updateCrew(crewId: Long, body: JSONObject): JSONObject = call("PUT", "/api/crews/$crewId", body) as JSONObject
+
+    /** 동승자 평소 탈 곳·내릴 곳 (본인 또는 차를 등록한 멤버). null 은 지운다 */
+    suspend fun updateMemberPlaces(crewId: Long, crewMemberId: Long, boardPlaceId: Long?, alightPlaceId: Long?): JSONObject =
+        call(
+            "PUT", "/api/crews/$crewId/members/$crewMemberId/places",
+            JSONObject().put("boardPlaceId", boardPlaceId ?: JSONObject.NULL).put("alightPlaceId", alightPlaceId ?: JSONObject.NULL),
+        ) as JSONObject
+
+    /** 그날(KST yyyy-MM-dd) 크루 멤버 전원의 출석. 따로 정하지 않은 사람은 참석, 평소 탈 곳 */
+    suspend fun attendance(crewId: Long, date: String): JSONArray =
+        call("GET", "/api/crews/$crewId/attendance/$date") as JSONArray
+
+    /** 출석 변경 (출발 전). boardPlaceId 가 null 이면 평소 탈 곳 */
+    suspend fun changeAttendance(crewId: Long, crewMemberId: Long, date: String, attending: Boolean, boardPlaceId: Long? = null): JSONObject =
+        call(
+            "PUT", "/api/crews/$crewId/members/$crewMemberId/attendance/$date",
+            JSONObject().put("attending", attending).put("boardPlaceId", boardPlaceId ?: JSONObject.NULL),
+        ) as JSONObject
+
+    /** 진행 중인 운행. 없으면 null (200, data 없음) */
+    suspend fun currentTrip(crewId: Long): JSONObject? = call("GET", "/api/crews/$crewId/trips/current") as JSONObject?
 
     // 정산 (month: "2026-11")
 
@@ -122,13 +171,24 @@ class PairCarApi(
 
     /**
      * SSE 를 구독해 이벤트마다 [onEvent](이벤트 이름, data) 를 부른다. 연결이 끊기면 돌아온다.
-     * 서버는 25초마다 keepalive 주석을 보내므로 그보다 길게 아무것도 안 오면 끊긴 것으로 본다.
+     * 서버는 25초마다 keepalive 주석을 보낸다. [SSE_IDLE_MS] 동안 한 줄도 안 오면 끊긴 것으로 보고
+     * 연결을 닫는다 (에뮬레이터 NAT 등에서 끊긴 연결이 읽기 대기로 남는 경우가 있었다).
      */
     suspend fun streamEvents(ticket: String, onEvent: suspend (event: String, data: String) -> Unit) = withContext(Dispatchers.IO) {
         val connection = (URL(baseUrl.trimEnd('/') + "/api/live/events?ticket=" + ticket).openConnection() as HttpURLConnection).apply {
             connectTimeout = TIMEOUT_MS
             readTimeout = SSE_READ_TIMEOUT_MS
             setRequestProperty("Accept", "text/event-stream")
+        }
+        var lastLineAt = System.currentTimeMillis()
+        val watchdog = launch {
+            while (true) {
+                delay(SSE_IDLE_MS / 3)
+                if (System.currentTimeMillis() - lastLineAt > SSE_IDLE_MS) {
+                    connection.disconnect()
+                    break
+                }
+            }
         }
         try {
             val status = try {
@@ -145,10 +205,12 @@ class PairCarApi(
             connection.inputStream.bufferedReader(Charsets.UTF_8).use { reader ->
                 while (true) {
                     val line = reader.readLine() ?: break
+                    lastLineAt = System.currentTimeMillis()
                     parser.feed(line)?.let { (event, data) -> onEvent(event, data) }
                 }
             }
         } finally {
+            watchdog.cancel()
             connection.disconnect()
         }
     }
@@ -214,6 +276,7 @@ class PairCarApi(
                         status,
                         error?.optString("code")?.takeIf { it.isNotEmpty() } ?: "HTTP_$status",
                         error?.optString("message").orEmpty().ifEmpty { text.take(200) },
+                        data = json?.optJSONObject("data"),
                     )
                 }
                 json.opt("data").takeUnless { it == JSONObject.NULL }
@@ -225,6 +288,9 @@ class PairCarApi(
     private companion object {
         const val TIMEOUT_MS = 10_000
         const val SSE_READ_TIMEOUT_MS = 60_000
+
+        /** keepalive(25초)를 한 번 놓쳐도 버티고, 두 번 놓치면 다시 연결 */
+        const val SSE_IDLE_MS = 45_000L
     }
 }
 

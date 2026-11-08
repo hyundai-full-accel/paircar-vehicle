@@ -30,14 +30,18 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
 import java.security.MessageDigest
+import com.paircar.domain.model.CrewInfo
+import com.paircar.domain.model.CrewSetup
+import java.time.DayOfWeek
+import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.LocalTime
 import java.time.YearMonth
+import java.time.format.DateTimeFormatter
 
 /** 동승자별 남은 시간·거리 (내비 경유지 정보). 못 구했으면 null */
 data class RiderRemain(val passengerId: String, val remainSeconds: Int?, val remainMeters: Int?)
 
-/** 서버의 크루 (GET /api/crews/{crewId} + /members) */
-data class ServerCrew(val crewId: Long, val name: String, val members: List<CrewMember>)
 
 /** 서버 연결 상태 (개발 확인용) */
 sealed interface ServerSyncState {
@@ -92,39 +96,188 @@ class ServerSync(
         }
     }
 
+    private val _crewLoaded = MutableStateFlow(false)
+
+    /** 서버에서 크루를 한 번이라도 받아 봤는지 (크루가 없다는 것도 확인했는지) */
+    val crewLoaded: StateFlow<Boolean> = _crewLoaded.asStateFlow()
+
     /** 크루 이름·명단을 다시 받는다 (초대 링크로 새 동승자가 들어왔을 수 있다) */
     suspend fun refreshCrew() = mutex.withLock {
         if (!ensureReady()) return@withLock
         try {
             loadCrew()
+            _crewLoaded.value = true
         } catch (e: Exception) {
             log("크루 명단을 받지 못했습니다: $e")
         }
     }
 
+    /**
+     * [크루 만들기]: 내 크루가 없으면 만들고, 출발지·도착지를 크루 장소로 등록해 일정을 저장한다.
+     * 실패하면 예외 (화면에 알린다).
+     */
+    suspend fun setupCrew(setup: CrewSetup) = mutex.withLock {
+        if (!ensureReady()) throw IOException("서버에 연결하지 못했어요")
+        val crewId = store.crewId ?: api.createCrew(setup.name).getLong("crewId").also {
+            store.crewId = it
+            log("서버 크루 생성: $it")
+        }
+        val current = _crew.value
+        api.updateCrew(
+            crewId,
+            crewBody(
+                setup.name, setup.departureTime, setup.days,
+                placeId(setup.origin.ref()), placeId(setup.destination.ref()),
+                settlementMode = current?.settlementMode ?: "FAIR",
+                includeDriver = current?.includeDriver ?: true,
+            ),
+        )
+        loadCrew()
+        _crewLoaded.value = true
+        log("크루 일정 저장: ${setup.name} ${setup.departureTime} ${setup.origin.name} → ${setup.destination.name}")
+    }
+
     private suspend fun loadCrew() {
         val crewId = store.crewId ?: return
         val crew = api.crew(crewId)
-        val members = api.crewMembers(crewId)
-        val passengerOf = store.crewMemberIds.entries.associate { (passengerId, crewMemberId) -> crewMemberId to passengerId }
+        val members = api.crewMembers(crewId).objects()
+        val attendance = api.attendance(crewId, LocalDate.now(ServerTime.KST).toString()).objects()
         val me = store.memberId
-        (0 until members.length()).map(members::getJSONObject).firstOrNull { it.getLong("memberId") == me }?.let {
-            store.driverCrewMemberId = it.getLong("crewMemberId")
+        members.firstOrNull { it.getLong("memberId") == me }?.let { store.driverCrewMemberId = it.getLong("crewMemberId") }
+
+        // 동승자 ID: 이미 짝지어진 앱 ID(예시 동승자 p-1 등)를 그대로 쓰고, 처음 보는 멤버는 cm-{crewMemberId}
+        val passengerOf = store.crewMemberIds.entries.associate { (passengerId, crewMemberId) -> crewMemberId to passengerId }.toMutableMap()
+        members.filter { it.getLong("memberId") != me }.forEach { m ->
+            val crewMemberId = m.getLong("crewMemberId")
+            if (crewMemberId !in passengerOf) {
+                passengerOf[crewMemberId] = "cm-$crewMemberId"
+                store.crewMemberIds = store.crewMemberIds + ("cm-$crewMemberId" to crewMemberId)
+            }
         }
+        val places = (members.flatMap { listOfNotNull(it.place("boardPlace"), it.place("alightPlace")) } +
+            listOfNotNull(crew.place("originPlace"), crew.place("destinationPlace")) +
+            attendance.flatMap { listOfNotNull(it.place("boardPlace"), it.place("alightPlace")) })
+        // 서버 장소를 기억해 두면 운행 시작·우회 거리 등록 때 같은 장소를 다시 등록하지 않는다
+        store.placeIds = store.placeIds + places.associate { it.ref.key to it.placeId }
+
         _crew.value = ServerCrew(
             crewId = crewId,
             name = crew.getString("name"),
-            members = (0 until members.length()).map(members::getJSONObject).map { m ->
+            members = members.map { m ->
                 val crewMemberId = m.getLong("crewMemberId")
+                val isDriver = m.getLong("memberId") == me
                 CrewMember(
                     id = crewMemberId.toString(),
                     name = m.getString("nickname"),
-                    isDriver = m.getLong("memberId") == me,
+                    isDriver = isDriver,
                     joinedAt = ServerTime.toKst(m.getString("joinedAt")),
-                    passengerId = passengerOf[crewMemberId],
+                    passengerId = if (isDriver) null else passengerOf[crewMemberId],
                 )
             }.sortedWith(compareByDescending<CrewMember> { it.isDriver }.thenBy { it.joinedAt }),
+            departureTime = crew.optString("departureTime").takeIf { it.isNotEmpty() && it != "null" }?.let(LocalTime::parse),
+            departureDays = crew.optJSONArray("departureDays")?.let { days -> (0 until days.length()).map { DayOfWeek.valueOf(days.getString(it)) }.toSet() }.orEmpty(),
+            origin = crew.place("originPlace"),
+            destination = crew.place("destinationPlace"),
+            settlementMode = crew.optString("settlementMode", "FAIR"),
+            includeDriver = crew.optBoolean("includeDriver", true),
+            memberPlaces = members.associate { it.getLong("crewMemberId") to MemberPlaces(it.place("boardPlace"), it.place("alightPlace")) },
+            todayAttendance = attendance.associate { a ->
+                a.getLong("crewMemberId") to ServerAttendance(
+                    crewMemberId = a.getLong("crewMemberId"),
+                    nickname = a.optString("nickname"),
+                    attending = a.getBoolean("attending"),
+                    boardPlace = a.place("boardPlace"),
+                    alightPlace = a.place("alightPlace"),
+                    changed = a.optBoolean("changed"),
+                )
+            },
         )
+    }
+
+    private fun JSONArray.objects(): List<JSONObject> = (0 until length()).map(::getJSONObject)
+
+    private fun JSONObject.place(key: String): ServerPlace? = optJSONObject(key)?.let {
+        ServerPlace(it.getLong("placeId"), it.getString("name"), it.getDouble("latitude"), it.getDouble("longitude"))
+    }
+
+    // 크루 설정·출석 (출발 전) → 서버
+
+    /**
+     * 운전자가 [크루 정보 설정]에서 바꾼 이름·출발 시각·요일을 올린다 (PUT 이라 출발지·목적지·정산 방식도 함께 보낸다).
+     * 차를 등록한 멤버만 바꿀 수 있다 (CREW_DRIVER_ONLY).
+     */
+    suspend fun pushCrewInfo(info: CrewInfo) = mutex.withLock {
+        if (!ensureReady()) return@withLock
+        try {
+            val current = _crew.value ?: run { loadCrew(); _crew.value } ?: return@withLock
+            val originId = info.origin?.let { placeId(it.ref()) } ?: current.origin?.placeId
+            val destinationId = info.destination?.let { placeId(it.ref()) } ?: current.destination?.placeId
+            api.updateCrew(
+                current.crewId,
+                crewBody(info.name, info.departureTime, info.days, originId, destinationId, current.settlementMode, current.includeDriver),
+            )
+            loadCrew()
+        } catch (e: Exception) {
+            log("크루 정보를 서버에 올리지 못했습니다: $e")
+        }
+    }
+
+    /** 출발 전 오늘 참석 여부 (운전자가 [탑승·픽업 관리]에서 바꿈). 운행 중 불참은 [onAttendanceChanged] */
+    suspend fun pushAttendance(date: LocalDate, passengerId: String, attendance: Attendance) = mutex.withLock {
+        if (!ensureReady()) return@withLock
+        val crewMemberId = store.crewMemberIds[passengerId] ?: return@withLock
+        try {
+            api.changeAttendance(store.crewId ?: return@withLock, crewMemberId, date.toString(), attendance == Attendance.ATTENDING)
+            loadCrew()
+        } catch (e: Exception) {
+            log("출석을 서버에 올리지 못했습니다: $e")
+        }
+    }
+
+    private fun crewBody(
+        name: String,
+        departure: LocalTime?,
+        days: Set<DayOfWeek>,
+        originPlaceId: Long?,
+        destinationPlaceId: Long?,
+        settlementMode: String,
+        includeDriver: Boolean,
+    ): JSONObject = JSONObject()
+        .put("name", name)
+        .put("departureTime", departure?.format(HH_MM) ?: JSONObject.NULL)
+        .put("departureDays", JSONArray(days.sorted().map { it.name }))
+        .put("originPlaceId", originPlaceId ?: JSONObject.NULL)
+        .put("destinationPlaceId", destinationPlaceId ?: JSONObject.NULL)
+        .put("settlementMode", settlementMode)
+        .put("includeDriver", includeDriver)
+
+    /**
+     * 서버 크루에 일정(출발지·목적지·출발 시각)이 아직 없으면 앱 크루 정보로 채운다 (크루를 처음 만든 직후).
+     * 개발용: 대신 가입시킨 예시 동승자의 평소 탈 곳과 오늘 불참도 서버에 넣는다.
+     */
+    private suspend fun seedSchedule(trip: CarpoolTrip) {
+        loadCrew()
+        val current = _crew.value ?: return
+        if (!current.hasSchedule) {
+            val days = carpool.crew.value?.days?.takeIf { it.isNotEmpty() } ?: current.departureDays
+            api.updateCrew(
+                current.crewId,
+                crewBody(current.name, trip.departureTime, days, placeId(trip.origin.ref()), placeId(trip.destination.ref()), current.settlementMode, current.includeDriver),
+            )
+            log("서버 크루 일정을 앱 값으로 채웠습니다")
+        }
+        if (!seedPassengers) return
+        val today = LocalDate.now(ServerTime.KST)
+        trip.acceptedPassengers.forEach { passenger ->
+            val crewMemberId = store.crewMemberIds[passenger.id] ?: return@forEach
+            if (current.memberPlaces[crewMemberId]?.board == null) {
+                api.updateMemberPlaces(current.crewId, crewMemberId, placeId(passenger.pickup.ref()), placeId(trip.destination.ref()))
+            }
+            if (!passenger.isAttending && trip.date == today && current.todayAttendance[crewMemberId]?.changed != true) {
+                api.changeAttendance(current.crewId, crewMemberId, today.toString(), attending = false)
+            }
+        }
+        loadCrew()
     }
 
     // 운행 이벤트 → 요청 쌓기
@@ -136,10 +289,12 @@ class ServerSync(
             log("주행거리를 못 읽어 운행 ${trip.id} 를 서버에 올리지 않습니다")
             return
         }
-        store.rideLog = RideLog(trip.id, roundTenth(odometer), emptyList())
+        // 같은 날 운행을 여러 번(출근·퇴근, 다시 시작) 해도 서버 운행이 겹치지 않도록 시작할 때마다 새 키를 쓴다
+        val tripKey = "${trip.id}#${System.currentTimeMillis()}"
+        store.rideLog = RideLog(tripKey, roundTenth(odometer), emptyList())
         enqueue(
             TripOp.Start(
-                tripKey = trip.id,
+                tripKey = tripKey,
                 startedAt = ServerTime.format(now()),
                 odometerKm = roundTenth(odometer),
                 origin = trip.origin.ref(),
@@ -150,7 +305,7 @@ class ServerSync(
     }
 
     suspend fun onBoardingChanged(trip: CarpoolTrip, passengerId: String, status: BoardingStatus) {
-        val ride = store.rideLog?.takeIf { it.tripKey == trip.id } ?: return
+        val ride = rideOf(trip) ?: return
         when (status) {
             BoardingStatus.BOARDED, BoardingStatus.DROPPED_OFF -> {
                 val boarded = status == BoardingStatus.BOARDED
@@ -158,11 +313,11 @@ class ServerSync(
                 store.rideLog = ride.copy(events = ride.events + RideEvent(passengerId, boarded, odometer))
                 val at = ServerTime.format(now())
                 enqueue(
-                    if (boarded) TripOp.Board(trip.id, passengerId, at, odometer)
-                    else TripOp.Alight(trip.id, passengerId, at, odometer),
+                    if (boarded) TripOp.Board(ride.tripKey, passengerId, at, odometer)
+                    else TripOp.Alight(ride.tripKey, passengerId, at, odometer),
                 )
             }
-            BoardingStatus.NO_SHOW -> enqueue(TripOp.Absent(trip.id, passengerId))
+            BoardingStatus.NO_SHOW -> enqueue(TripOp.Absent(ride.tripKey, passengerId))
             // 경유지에 도착했는데 아직 안 탐 → 동승자에게 "차가 도착했어요"
             BoardingStatus.ARRIVED_AT_PICKUP -> scope.launch(Dispatchers.IO) { sendArrived(trip, passengerId) }
             BoardingStatus.WAITING -> Unit
@@ -171,19 +326,20 @@ class ServerSync(
 
     fun onAttendanceChanged(trip: CarpoolTrip, passengerId: String, attendance: Attendance) {
         // 출발 전 불참은 운행 시작 요청의 동승자에서 빠지는 것으로 충분하다
-        if (attendance != Attendance.ABSENT || store.rideLog?.tripKey != trip.id) return
-        enqueue(TripOp.Absent(trip.id, passengerId))
+        val ride = rideOf(trip)
+        if (attendance != Attendance.ABSENT || ride == null) return
+        enqueue(TripOp.Absent(ride.tripKey, passengerId))
     }
 
     /** 운행 완료·취소: 구간을 나눠 올리고 운행을 끝낸다 */
     suspend fun onTripEnded(trip: CarpoolTrip) {
-        val ride = store.rideLog?.takeIf { it.tripKey == trip.id } ?: return
+        val ride = rideOf(trip) ?: return
         val odometer = currentOdometer(ride)
         val (economy, source) = fuelEconomy()
         val segments = buildSegments(ride.startOdometerKm, odometer, ride.events, economy, source)
-        if (segments.isNotEmpty()) enqueue(TripOp.Segments(trip.id, segments), flush = false)
+        if (segments.isNotEmpty()) enqueue(TripOp.Segments(ride.tripKey, segments), flush = false)
         // 앱은 통행료를 아직 모른다
-        enqueue(TripOp.End(trip.id, ServerTime.format(now()), odometer, tollFareWon = 0))
+        enqueue(TripOp.End(ride.tripKey, ServerTime.format(now()), odometer, tollFareWon = 0))
         store.rideLog = null
     }
 
@@ -193,7 +349,7 @@ class ServerSync(
     /** QR 초대 코드는 서버가 발급한다 (동승자 웹이 같은 코드로 가입을 확인한다) */
     suspend fun createInvite(): CrewInvite = mutex.withLock {
         if (!ensureReady()) throw IOException("서버에 연결하지 못했어요")
-        val invite = api.createInvite(store.crewId!!)
+        val invite = api.createInvite(store.crewId ?: throw IllegalStateException("크루를 먼저 만들어 주세요"))
         CrewInvite(
             code = invite.getString("code"),
             url = invite.getString("inviteUrl"),
@@ -234,6 +390,7 @@ class ServerSync(
                                     .onFailure { log("실시간 알림을 읽지 못했습니다: $event $it") }
                             }
                         }
+                        log("실시간 구독 끊김: 서버가 연결을 닫음")
                     }
                 } catch (e: CancellationException) {
                     throw e
@@ -270,6 +427,18 @@ class ServerSync(
                 CrewLiveEvent.RiderPlaceChanged(passengerId, name, Place(place.name, "", GeoPoint(place.latitude, place.longitude)))
             }
             "rider.absent" -> CrewLiveEvent.RiderAbsent(passengerId, name)
+            // 출발 전 출석 변경 (tripId 없음). 바꾼 사람을 뺀 크루 멤버 전원에게 온다
+            "rider.attendance-changed" -> {
+                val place = body.place("boardPlace")
+                place?.let { store.placeIds = store.placeIds + (it.ref.key to it.placeId) }
+                CrewLiveEvent.RiderAttendanceChanged(
+                    passengerId = passengerId,
+                    name = name,
+                    date = LocalDate.parse(body.getString("serviceDate")),
+                    attending = body.getBoolean("attending"),
+                    pickup = place?.let { Place(it.name, "", GeoPoint(it.latitude, it.longitude)) },
+                )
+            }
             "receipt.issued" -> CrewLiveEvent.ReceiptIssued
             "detour.confirm-requested" ->
                 CrewLiveEvent.DetourConfirmRequested(body.getLong("detourId"), body.optString("placeName"), body.getDouble("detourKm"))
@@ -279,7 +448,14 @@ class ServerSync(
 
     // 실시간 알림 [운전자] → 동승자. 저장하지 않는 알림이라 실패해도 다시 보내지 않는다.
 
-    private fun liveTripId(trip: CarpoolTrip): Long? = store.tripIds[trip.id]?.takeIf { it != ServerStore.FAILED_TRIP }
+    private fun liveTripId(trip: CarpoolTrip): Long? =
+        rideOf(trip)?.let { store.tripIds[it.tripKey] }?.takeIf { it != ServerStore.FAILED_TRIP }
+
+    /** 이 앱 운행의 진행 중 기록 (서버 운행 키는 "앱 운행 ID#시작 시각") */
+    private fun rideOf(trip: CarpoolTrip): RideLog? = store.rideLog?.takeIf { it.tripKey.substringBefore("#") == trip.id }
+
+    /** 지금 진행 중인 운행의 서버 tripId (테스트·복구 확인용) */
+    fun serverTripId(trip: CarpoolTrip): Long? = liveTripId(trip)
 
     /** 차량 위치(SDK)와 동승자별 남은 시간·거리(내비 경유지 정보) */
     suspend fun sendLocation(trip: CarpoolTrip, location: GeoPoint, remains: List<RiderRemain>) {
@@ -357,13 +533,14 @@ class ServerSync(
 
     suspend fun receipts(month: YearMonth): List<ServerReceipt> = mutex.withLock {
         if (!ensureReady()) throw IOException("서버에 연결하지 못했어요")
-        api.receipts(store.crewId!!, month.toString()).toReceipts()
+        val crewId = store.crewId ?: return@withLock emptyList()
+        api.receipts(crewId, month.toString()).toReceipts()
     }
 
     /** 고른 달 영수증을 발행한다. 서버는 운전자·동승자 쌍마다 한 장씩 만든다 */
     suspend fun issueReceipts(month: YearMonth): List<ServerReceipt> = mutex.withLock {
         if (!ensureReady()) throw IOException("서버에 연결하지 못했어요")
-        api.issueReceipts(store.crewId!!, month.toString()).toReceipts()
+        api.issueReceipts(store.crewId ?: throw IllegalStateException("크루를 먼저 만들어 주세요"), month.toString()).toReceipts()
     }
 
     private fun JSONArray.toReceipts(): List<ServerReceipt> = (0 until length()).map(::getJSONObject).map { r ->
@@ -484,7 +661,12 @@ class ServerSync(
                 .put("startedAt", op.startedAt)
                 .put("startOdometerKm", op.odometerKm)
                 .put("riders", JSONArray(riders))
-            val tripId = api.startTrip(body).getLong("tripId")
+            val tripId = try {
+                api.startTrip(body).getLong("tripId")
+            } catch (e: ApiException) {
+                val existing = e.data?.optLong("tripId")?.takeIf { e.code == "TRIP_ALREADY_IN_PROGRESS" && it > 0 } ?: throw e
+                recoverInProgress(op, existing) ?: api.startTrip(body).getLong("tripId")
+            }
             store.tripIds = store.tripIds + (op.tripKey to tripId)
             return
         }
@@ -512,6 +694,31 @@ class ServerSync(
             is TripOp.End -> api.endTrip(tripId, op.endedAt, op.odometerKm, op.tollFareWon)
             is TripOp.Start -> Unit
         }
+    }
+
+    /**
+     * 운행 시작이 409 TRIP_ALREADY_IN_PROGRESS 일 때 (앱 재설치·기기 저장 유실·종료 요청 유실).
+     * - 같은 운행일이고 다른 앱 운행과 짝지어지지 않았으면 그 운행을 이어서 쓴다 → 그 tripId
+     * - 지난 운행이면 마지막 주행거리로 끝내고 null (새로 시작한다)
+     */
+    private suspend fun recoverInProgress(op: TripOp.Start, existingTripId: Long): Long? {
+        val existing = api.trip(existingTripId)
+        val serviceDate = existing.getString("serviceDate")
+        val startDate = ServerTime.parse(op.startedAt).atZone(ServerTime.KST).toLocalDate().toString()
+        val claimed = store.tripIds.any { (key, id) -> id == existingTripId && key != op.tripKey }
+        if (serviceDate == startDate && !claimed) {
+            log("진행 중인 서버 운행 $existingTripId 를 이어서 씁니다")
+            return existingTripId
+        }
+        val segments = existing.optJSONArray("segments")?.objects().orEmpty()
+        val boardings = existing.optJSONArray("boardings")?.objects().orEmpty()
+        val lastOdometer = (listOf(existing.getDouble("startOdometerKm")) +
+            segments.map { it.getDouble("endOdometerKm") } +
+            boardings.flatMap { b -> listOf("boardOdometerKm", "alightOdometerKm").mapNotNull { k -> b.optDouble(k).takeUnless(Double::isNaN) } })
+            .max()
+        api.endTrip(existingTripId, op.startedAt, lastOdometer, tollFareWon = 0)
+        log("끝나지 않은 지난 운행 $existingTripId ($serviceDate) 을 끝내고 새로 시작합니다")
+        return null
     }
 
     // 준비 (멤버 → 차량 → 크루 → 동승자 → 계좌·단가)
@@ -550,19 +757,33 @@ class ServerSync(
             store.carId = car.getLong("carId")
         }
         if (store.crewId == null) {
-            // 이미 만든 크루가 있으면 그것을 쓴다 (크루 생성 응답을 못 받고 끊긴 경우 등). 없을 때만 새로 만든다.
+            // 이미 만든 크루가 있으면 그것을 쓴다 (크루 생성 응답을 못 받고 끊긴 경우 등)
             val existing = api.myCrews().let { crews -> (0 until crews.length()).map(crews::getJSONObject) }.firstOrNull()
             if (existing != null) {
                 store.crewId = existing.getLong("crewId")
                 log("서버 크루 이어서 사용: ${store.crewId}")
-            } else {
-                store.crewId = api.createCrew(carpool.crew.value?.name ?: trip?.title ?: DEFAULT_CREW_NAME).getLong("crewId")
+            } else if (trip != null) {
+                // 앱에 이미 크루 정보(오늘 운행)가 있으면 그것으로 만든다. 없으면 [크루 만들기]에서 사용자가 만든다
+                store.crewId = api.createCrew(carpool.crew.value?.name ?: trip.title).getLong("crewId")
                 log("서버 크루 생성: ${store.crewId}")
             }
         }
-        if (seedPassengers && trip != null) seed(trip)
+        if (seedPassengers && trip != null && store.crewId != null) seed(trip)
+        // 앱을 켤 때 한 번: 서버 크루 일정이 비어 있으면 채운다
+        if (!scheduleChecked && trip != null) {
+            try {
+                seedSchedule(trip)
+            } catch (e: ApiException) {
+                // 네트워크·401 은 위로 올려 다시 준비한다. 그 밖의 거절은 운행 기록 전송을 막지 않도록 넘어간다
+                if (e.retryable || e.status == 401) throw e
+                log("크루 일정을 채우지 못했습니다: ${e.message}")
+            }
+            scheduleChecked = true
+        }
         syncSettings(driverName)
     }
+
+    private var scheduleChecked = false
 
     private suspend fun seed(trip: CarpoolTrip) {
         // 수락한 동승자만 크루원이다 (새 동승 요청은 아직 크루가 아니다)
@@ -586,16 +807,29 @@ class ServerSync(
                 store.syncedAccountHash = hash
             }
         }
+        // 충전 단가·전비는 차량 값이다 (크루 값 아님). 정산은 운행에 쓴 차의 단가를 쓴다
         val price = current.chargePricePerKwh ?: DEFAULT_CHARGE_PRICE_WON
-        if (price.toString() != store.syncedFuelPrice) {
-            api.changeFuelPrice(store.crewId!!, price)
-            store.syncedFuelPrice = price.toString()
+        val efficiency = current.efficiencyKmPerKwh ?: DEFAULT_EFFICIENCY
+        val carSettings = "$FUEL_TYPE|$efficiency|$price"
+        if (carSettings != store.syncedFuelPrice) {
+            api.updateCar(store.carId!!, FUEL_TYPE, efficiency, price)
+            store.syncedFuelPrice = carSettings
         }
     }
 
+    /**
+     * 크루 장소 ID. 처음 쓰는 장소는 등록한다.
+     * 크루 안에서 장소 이름은 하나뿐이라(CREW_PLACE_NAME_DUPLICATED) 같은 이름이 이미 있으면 그 장소를 쓴다.
+     */
     private suspend fun placeId(place: PlaceRef): Long {
         store.placeIds[place.key]?.let { return it }
-        val id = api.registerPlace(store.crewId!!, place.name, place.latitude, place.longitude).getLong("placeId")
+        val crewId = store.crewId!!
+        val id = try {
+            api.registerPlace(crewId, place.name, place.latitude, place.longitude).getLong("placeId")
+        } catch (e: ApiException) {
+            if (e.code != "CREW_PLACE_NAME_DUPLICATED") throw e
+            api.places(crewId).objects().firstOrNull { it.getString("name") == place.name }?.getLong("placeId") ?: throw e
+        }
         store.placeIds = store.placeIds + (place.key to id)
         return id
     }
@@ -613,7 +847,8 @@ class ServerSync(
         return (settings().efficiencyKmPerKwh ?: DEFAULT_EFFICIENCY) to "MANUAL"
     }
 
-    private fun Place.ref() = PlaceRef(name, point.latitude, point.longitude)
+    /** 서버 크루 장소는 위도·경도 소수 6자리까지 받는다 (그보다 길면 400 INVALID_INPUT) */
+    private fun Place.ref() = PlaceRef(name, roundCoordinate(point.latitude), roundCoordinate(point.longitude))
 
     private fun sha256(text: String): String =
         MessageDigest.getInstance("SHA-256").digest(text.toByteArray()).joinToString("") { "%02x".format(it) }
@@ -626,6 +861,9 @@ class ServerSync(
         /** 정산 화면 기본값과 같은 값 (운전자가 아직 정하지 않았을 때) */
         const val DEFAULT_EFFICIENCY = 5.5
         const val DEFAULT_CHARGE_PRICE_WON = 347
+
+        /** 크루 출발 시각 (KST) */
+        val HH_MM: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 
         /** 실시간 구독이 끊겼을 때 다시 연결하기까지 */
         const val LIVE_RECONNECT_MILLIS = 3_000L

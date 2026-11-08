@@ -24,6 +24,18 @@ sealed interface CrewLiveEvent {
     /** 동승자 "오늘은 안 타요" → 경유지에서 빼고 정산에서 빠진다 */
     data class RiderAbsent(override val passengerId: String?, override val name: String) : Rider
 
+    /**
+     * 출발 전 출석 변경 ("내일은 안 타요", "오늘은 후문에서 탈게요").
+     * [pickup] 은 그날 탈 곳 (null 이면 평소 탈 곳). 운행 중 불참은 [RiderAbsent].
+     */
+    data class RiderAttendanceChanged(
+        override val passengerId: String?,
+        override val name: String,
+        val date: java.time.LocalDate,
+        val attending: Boolean,
+        val pickup: Place?,
+    ) : Rider
+
     /** 월 영수증 발행 */
     data object ReceiptIssued : CrewLiveEvent
 

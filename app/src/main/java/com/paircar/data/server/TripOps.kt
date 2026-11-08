@@ -107,3 +107,6 @@ fun buildSegments(
 
 /** 서버 규칙: km 는 소수 1자리 */
 fun roundTenth(km: Double): Double = Math.round(km * 10) / 10.0
+
+/** 서버 좌표 정밀도: 소수 6자리 (약 10cm) */
+fun roundCoordinate(value: Double): Double = Math.round(value * 1_000_000) / 1_000_000.0

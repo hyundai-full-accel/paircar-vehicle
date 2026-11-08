@@ -1,10 +1,12 @@
 package com.paircar.domain.model
 
 import com.paircar.core.model.GeoPoint
+import com.paircar.domain.repository.RoutePreview
 import java.time.Duration
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
+import kotlin.math.roundToInt
 
 /** 동승자를 태웠는지 */
 enum class TripKind { CARPOOL, SOLO }
@@ -43,6 +45,36 @@ data class RouteComparison(
 ) {
     val extraKm: Double get() = (carpoolKm - directKm).coerceAtLeast(0.0)
     val extraSeconds: Int get() = (carpoolSeconds - directSeconds).coerceAtLeast(0)
+
+    /** 화면에 보이는 단위(0.1km·분)로 맞춘다. 그래야 두 값의 차이가 화면의 추가 거리·시간과 같다 */
+    fun rounded(): RouteComparison = RouteComparison(
+        directKm = tenthKm(directKm),
+        directSeconds = wholeMinutes(directSeconds),
+        carpoolKm = tenthKm(carpoolKm),
+        carpoolSeconds = wholeMinutes(carpoolSeconds),
+    )
+
+    companion object {
+        /**
+         * 경유 경로와 직행 경로를 비교한다. 어느 한쪽이라도 길찾기에 실패해 직선 추정이면 null
+         * (직선 추정이 섞이면 차이가 틀어진다).
+         */
+        fun of(via: RoutePreview, direct: RoutePreview): RouteComparison? =
+            if (via.isApproximate || direct.isApproximate) {
+                null
+            } else {
+                RouteComparison(
+                    directKm = direct.distanceMeters / 1000.0,
+                    directSeconds = direct.durationSeconds,
+                    carpoolKm = via.distanceMeters / 1000.0,
+                    carpoolSeconds = via.durationSeconds,
+                )
+            }
+
+        private fun tenthKm(km: Double): Double = (km * 10).roundToInt() / 10.0
+
+        private fun wholeMinutes(seconds: Int): Int = (seconds / 60.0).roundToInt() * 60
+    }
 }
 
 /** 진행 중인 운행의 기록 시작값 (출발 시각, 출발 때 주행거리) */

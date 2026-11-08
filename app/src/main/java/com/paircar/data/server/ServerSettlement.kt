@@ -59,16 +59,18 @@ fun issuedSettlement(month: YearMonth, crewName: String, receipts: List<ServerRe
     val members = receipts.map { r ->
         val tollWon = r.tollWon.roundToLong()
         val subtotalWon = (r.amountWon - r.roundingWon).roundToLong()
+        // 서버 ownDistanceKm = 내 부담 거리 (함께 탄 구간의 내 몫 + 우회 거리 전부). 화면은 둘을 나눠 보여준다
+        val sharedShareKm = (r.ownDistanceKm - r.detourKm).coerceAtLeast(0.0)
         MemberRides(
             name = r.payerNickname,
             rides = r.boardingDays,
             sharedKm = r.sharedDistanceKm,
             // 서버는 구간마다 인원으로 나눈다. 화면의 "거리 ÷ 인원" 표기용 평균 인원
-            headcount = if (r.ownDistanceKm > 0) (r.sharedDistanceKm / r.ownDistanceKm).roundToInt().coerceAtLeast(1) else 1,
+            headcount = if (sharedShareKm > 0) (r.sharedDistanceKm / sharedShareKm).roundToInt().coerceAtLeast(1) else 1,
             detourKmPerRide = if (r.boardingDays > 0) r.detourKm / r.boardingDays else 0.0,
             tollWon = tollWon.toInt(),
             issued = IssuedAmounts(
-                sharedShareKm = r.ownDistanceKm,
+                sharedShareKm = sharedShareKm,
                 detourKm = r.detourKm,
                 chargeWon = subtotalWon - tollWon,
                 tollWon = tollWon,
@@ -179,8 +181,24 @@ class ServerSettlementRepository(
         }
     }
 
+    /** 끝난 달만 수동 발행할 수 있다. 지난달 영수증은 매달 1일 04:00(KST)에 서버가 자동 발행한다 */
+    override fun canIssue(month: YearMonth): Boolean = month < YearMonth.from(today())
+
     override suspend fun issue(month: YearMonth) {
-        sync.issueReceipts(month)
+        check(canIssue(month)) { "이번 달 정산은 다음 달 1일에 자동으로 발행돼요" }
+        try {
+            sync.issueReceipts(month)
+        } catch (e: ApiException) {
+            throw IllegalStateException(
+                when (e.code) {
+                    "SETTLEMENT_MONTH_NOT_CLOSED" -> "이번 달 정산은 다음 달 1일에 자동으로 발행돼요"
+                    "FUEL_PRICE_NOT_FOUND" -> "충전 단가가 없어 정산할 수 없어요. 정산 정보 설정에서 충전 단가를 입력해 주세요"
+                    "BANK_ACCOUNT_REQUIRED" -> "수취 계좌를 먼저 등록해 주세요"
+                    else -> "정산을 요청하지 못했어요"
+                },
+                e,
+            )
+        }
         val issued = sync.receipts(month)
         receipts.update { it + (month to issued) }
         check(issued.isNotEmpty()) { "서버에 이 달 탑승 기록이 없어 발행할 영수증이 없어요" }

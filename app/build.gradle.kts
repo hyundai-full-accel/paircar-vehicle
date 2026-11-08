@@ -41,8 +41,8 @@ android {
         debug {
             // 페어카 크루 서버. 에뮬레이터에서 10.0.2.2 = 개발 PC 의 localhost (nginx :80)
             buildConfigField("String", "API_BASE_URL", "\"http://10.0.2.2\"")
-            // 개발용: 앱의 예시 동승자를 서버 크루 멤버로 대신 가입시킨다 (원래는 초대 링크로 직접 가입)
-            buildConfigField("boolean", "SEED_SERVER_PASSENGERS", "true")
+            // 예시 동승자를 서버 크루에 대신 가입시키지 않는다. 동승자는 초대 링크(동승자 웹)로 들어온다
+            buildConfigField("boolean", "SEED_SERVER_PASSENGERS", "false")
         }
         release {
             isMinifyEnabled = false

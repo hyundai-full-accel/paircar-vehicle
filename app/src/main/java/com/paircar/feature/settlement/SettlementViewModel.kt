@@ -99,17 +99,11 @@ class SettlementViewModel(
         when {
             settlement.receiverAccount == null -> onDone("수취 계좌를 먼저 등록해 주세요")
             settlement.requested -> onDone("이미 요청한 정산이에요")
+            repository.issuesOnServer && !repository.canIssue(settlement.month) ->
+                onDone("이번 달 정산은 다음 달 1일에 자동으로 발행돼요. 지금 금액은 예상 금액이에요")
             repository.issuesOnServer -> viewModelScope.launch {
                 runCatching { repository.issue(settlement.month) }
-                    .onSuccess {
-                        onDone(
-                            if (settlement.month == YearMonth.from(today())) {
-                                "정산 영수증을 발행했어요. 오늘 이후 운행은 다음 달 정산에 들어가요"
-                            } else {
-                                "정산 영수증을 발행했어요"
-                            },
-                        )
-                    }
+                    .onSuccess { onDone("정산 영수증을 발행했어요") }
                     .onFailure { onDone(it.message ?: "정산을 요청하지 못했어요") }
             }
             else -> viewModelScope.launch {

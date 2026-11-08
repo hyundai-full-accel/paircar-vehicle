@@ -108,8 +108,11 @@ data class CarpoolTrip(
         get() = Duration.between(departureTime, estimatedArrivalTime).seconds.toInt()
 
     /** 지도 경로선용: 출발지 → 픽업 지점(시간순) → 목적지 */
-    fun planStops(): List<GeoPoint> =
-        listOf(origin.point) + pickupsInOrder.map { it.pickup.point } + destination.point
+    fun planStops(): List<GeoPoint> = stopsVia(pickupsInOrder.map { it.pickup })
+
+    /** 출발지 → [pickups] (주어진 순서) → 목적지 */
+    fun stopsVia(pickups: List<Place>): List<GeoPoint> =
+        listOf(origin.point) + pickups.map { it.point } + destination.point
 
     /** 경유지 없이 출발지 → 목적지 (경로 비교용) */
     fun directStops(): List<GeoPoint> = listOf(origin.point, destination.point)

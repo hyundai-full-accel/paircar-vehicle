@@ -94,7 +94,7 @@ fun CrewScreen(
     val trip = state.trip
     val crew = state.crew
     if (trip == null || crew == null) {
-        Text("소속된 크루가 없어요", style = MaterialTheme.typography.headlineMedium)
+        // 크루가 없으면 앱 루트가 [크루 만들기]를 대신 보여준다
         return
     }
     var modal by rememberSaveable { mutableStateOf(CrewModal.NONE) }
@@ -129,6 +129,7 @@ fun CrewScreen(
             CrewModal.INFO -> CrewInfoModal(
                 crew = crew,
                 trip = trip,
+                current = state.currentLocation,
                 onSave = { info ->
                     CrewViewModel.validateCrewInfo(info)?.let(onNotReady) ?: run {
                         onSaveCrewInfo(info)
@@ -461,7 +462,7 @@ private fun ExtraRow(label: String, value: String, big: Boolean) {
  * 크기는 시안(2000px 캡처 = 화면 2560px)에서 잰 값: 팝업 폭 727, QR 틀 295.
  */
 @Composable
-private fun InviteModal(crew: Crew, state: InviteUiState, onRegenerate: () -> Unit, onClose: () -> Unit) {
+internal fun InviteModal(crew: Crew, state: InviteUiState, onRegenerate: () -> Unit, onClose: () -> Unit) {
     Box(Modifier.fillMaxSize()) {
         InScreenModal(onDismiss = onClose, maxWidth = 727.dp) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {

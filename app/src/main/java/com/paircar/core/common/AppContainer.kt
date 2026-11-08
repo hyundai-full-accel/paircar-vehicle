@@ -9,10 +9,13 @@ import com.paircar.data.local.PrefsTripStores
 import com.paircar.data.local.KeystoreAccountCipher
 import com.paircar.data.local.PrefsCrewInfoStore
 import com.paircar.data.local.PrefsSettlementSettingsStore
+import com.paircar.data.mock.MockCarpoolData
 import com.paircar.data.mock.MockCarpoolRepository
 import com.paircar.data.mock.MockSettlementRepository
 import com.paircar.data.mock.MockTripHistory
+import com.paircar.data.remote.CachingRoutePreviewRepository
 import com.paircar.data.remote.OsrmRoutePreviewRepository
+import com.paircar.domain.usecase.RouteComparer
 import com.paircar.data.server.PairCarApi
 import com.paircar.data.server.PrefsServerStore
 import com.paircar.data.server.ServerCarpoolRepository
@@ -55,8 +58,16 @@ class AppContainer(context: Context) {
 
     private val crewInfoStore = PrefsCrewInfoStore(context)
 
-    // 오늘 운행·동승자·일정은 서버에 아직 없어 앱(Mock)이 갖는다
+    // 앱 자체 지도의 경로선 미리보기 (프로토타입: OSRM 데모 서버). 같은 경로는 다시 묻지 않는다
+    val routePreviewRepository: RoutePreviewRepository = CachingRoutePreviewRepository(OsrmRoutePreviewRepository())
+
+    /** 서버 주소가 있으면(디버그) 서버 데이터만 쓰고, 없으면(릴리스 기본값) 화면 확인용 예시 데이터를 쓴다 */
+    private val useServer = BuildConfig.API_BASE_URL.isNotBlank()
+
+    // 오늘 운행의 진행 상태를 기기에 둔다. 서버 모드에서는 서버 일정이 올 때까지 비어 있다
     private val localCarpoolRepository: CarpoolRepository = MockCarpoolRepository(
+        tripFactory = if (useServer) ({ null }) else ({ MockCarpoolData.todayTrip() }),
+        crew = if (useServer) null else MockCarpoolData.crew,
         inviteBaseUrl = BuildConfig.INVITE_BASE_URL,
         stateStore = tripStores,
         crewInfoStore = crewInfoStore,
@@ -84,7 +95,16 @@ class AppContainer(context: Context) {
 
     val carpoolRepository: CarpoolRepository =
         serverSync?.let {
-            ServerCarpoolRepository(localCarpoolRepository, it, applicationScope, editedCrewName = { crewInfoStore.load()?.name })
+            ServerCarpoolRepository(
+                local = localCarpoolRepository,
+                sync = it,
+                scope = applicationScope,
+                editedCrewName = { crewInfoStore.load()?.name },
+                routes = routePreviewRepository,
+                // 서버 차량에는 이름이 없어 등록한 연료 종류로 보여준다
+                vehicleName = "전기차",
+                log = { msg -> Log.i("PairCarServer", msg) },
+            )
         } ?: localCarpoolRepository
 
     // 월별 정산: 서버 월 영수증. 서버가 없으면 Mock
@@ -98,18 +118,18 @@ class AppContainer(context: Context) {
         serverSync?.let { sync -> ServerSettlementSettingsStore(localSettlementSettingsStore) { sync.onSettingsChanged() } }
             ?: localSettlementSettingsStore
 
-    // 끝난 운행은 기기에 저장한다. 지난 기록(Mock)은 화면 개발용으로 함께 보여준다.
+    // 끝난 운행은 기기에 저장한다. 서버 없이 쓸 때만 화면 확인용 지난 기록(예시)을 함께 보여준다.
     val tripRecordRepository: TripRecordRepository = LocalTripRecordRepository(
         file = File(context.filesDir, "trip_records.json"),
-        seed = MockTripHistory.records(until = LocalDate.now()),
+        seed = if (useServer) emptyList() else MockTripHistory.records(until = LocalDate.now()),
     )
 
     val naviRepository: NaviRepository = NaviRepositoryFactory.create(context, applicationScope)
 
     val drivingStateRepository: DrivingStateRepository = CarDrivingStateRepository(context)
 
-    // 앱 자체 지도의 경로선 미리보기 (프로토타입: OSRM 데모 서버)
-    val routePreviewRepository: RoutePreviewRepository = OsrmRoutePreviewRepository()
+    /** 경유 vs 직행 비교 (우회 거리). 운행 기록·서버 우회 거리 등록이 같이 쓴다 */
+    val routeComparer = RouteComparer(routePreviewRepository)
 
     val pickupNotifier = PickupNotifier(context)
 
@@ -135,7 +155,7 @@ class AppContainer(context: Context) {
             sync = sync,
             carpool = carpoolRepository,
             navi = naviRepository,
-            routes = routePreviewRepository,
+            routes = routeComparer,
             // 서버에서 온 변경은 서버로 되돌려 보내지 않도록 앱 저장소(local)에 직접 반영한다
             applyEvent = ApplyCrewLiveEventUseCase(
                 carpool = localCarpoolRepository,

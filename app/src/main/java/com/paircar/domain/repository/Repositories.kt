@@ -8,6 +8,8 @@ import com.paircar.domain.model.CarpoolTrip
 import com.paircar.domain.model.Crew
 import com.paircar.domain.model.CrewInfo
 import com.paircar.domain.model.CrewInvite
+import com.paircar.domain.model.CrewSetup
+import com.paircar.domain.model.CrewSetupState
 import com.paircar.domain.model.DrivingState
 import com.paircar.domain.model.GuidanceState
 import com.paircar.domain.model.MatchStatus
@@ -35,6 +37,15 @@ interface CarpoolRepository {
     val todayTrip: StateFlow<CarpoolTrip?>
     val crew: StateFlow<Crew?>
 
+    /** 크루를 만들어야 하는지 (오늘의 카풀·내 크루가 비어 있을 때 무엇을 보여줄지) */
+    val setupState: StateFlow<CrewSetupState>
+
+    /**
+     * 크루를 만들고 반복 운행 일정(출발 시각·요일·출발지·도착지)을 정한다.
+     * 이미 크루가 있으면(일정만 없을 때) 그 크루의 일정을 채운다. 실패하면 예외.
+     */
+    suspend fun setupCrew(setup: CrewSetup)
+
     suspend fun refresh()
     suspend fun updateMatchStatus(passengerId: String, status: MatchStatus)
     suspend fun updateBoardingStatus(passengerId: String, status: BoardingStatus)
@@ -45,6 +56,18 @@ interface CarpoolRepository {
 
     /** 동승자가 오늘 탈 지점을 바꿨다 (동승자 웹 → 서버 → 실시간 알림). 바뀌기 전 지점은 경유지 변경 알림에 쓴다 */
     suspend fun updatePickup(passengerId: String, pickup: Place)
+
+    /**
+     * 서버 크루 일정·출석으로 만든 오늘 운행으로 바꾼다. 출발 전(SCHEDULED)일 때만 바꾸고,
+     * 같은 동승자의 탑승 상태는 이어간다. 출발 뒤에는 진행 중인 운행을 건드리지 않는다.
+     */
+    suspend fun applySchedule(trip: CarpoolTrip)
+
+    /**
+     * 끝났거나 취소한 오늘 운행을 다시 출발 전으로 돌린다 (퇴근길 등 같은 날 한 번 더 운행).
+     * 탑승 상태는 처음으로 돌리고 참석 여부·탈 곳은 그대로 둔다.
+     */
+    suspend fun prepareNextTrip()
 
     /** 크루 이름·출발 시각·반복 요일 */
     suspend fun updateCrewInfo(info: CrewInfo)
@@ -63,6 +86,9 @@ interface SettlementRepository {
         get() = false
 
     suspend fun refresh() {}
+
+    /** 이 달을 지금 정산 요청할 수 있는지 (서버는 끝난 달만 발행한다) */
+    fun canIssue(month: YearMonth): Boolean = true
 
     /** 고른 달의 영수증을 서버에서 발행한다 (발행 뒤 금액은 바뀌지 않는다) */
     suspend fun issue(month: YearMonth) {}

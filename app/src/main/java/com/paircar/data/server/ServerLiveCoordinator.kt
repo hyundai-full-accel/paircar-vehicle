@@ -4,8 +4,8 @@ import com.paircar.domain.model.CarpoolStatus
 import com.paircar.domain.model.Passenger
 import com.paircar.domain.repository.CarpoolRepository
 import com.paircar.domain.repository.NaviRepository
-import com.paircar.domain.repository.RoutePreviewRepository
 import com.paircar.domain.usecase.ApplyCrewLiveEventUseCase
+import com.paircar.domain.usecase.RouteComparer
 import com.paircar.domain.usecase.riderRemains
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -27,7 +27,7 @@ class ServerLiveCoordinator(
     private val sync: ServerSync,
     private val carpool: CarpoolRepository,
     private val navi: NaviRepository,
-    private val routes: RoutePreviewRepository,
+    private val routes: RouteComparer,
     private val applyEvent: ApplyCrewLiveEventUseCase,
     private val scope: CoroutineScope,
     private val log: (String) -> Unit = {},
@@ -73,13 +73,10 @@ class ServerLiveCoordinator(
         }
     }
 
-    /** 운전자 출발지 기준: (출발지 → 탈 지점 → 목적지) − (출발지 → 목적지). 길찾기가 어림값이면 등록하지 않는다 */
+    /** 운전자 출발지 기준 우회 거리. 길찾기가 어림값이면 등록하지 않는다 */
     private suspend fun detourKm(passenger: Passenger): Double? {
         val trip = carpool.todayTrip.value ?: return null
-        val via = routes.preview(listOf(trip.origin.point, passenger.pickup.point, trip.destination.point))
-        val direct = routes.preview(trip.directStops())
-        if (via.isApproximate || direct.isApproximate) return null
-        return (via.distanceMeters - direct.distanceMeters) / 1000.0
+        return routes.detourKm(trip, passenger.pickup)
     }
 
     private companion object {

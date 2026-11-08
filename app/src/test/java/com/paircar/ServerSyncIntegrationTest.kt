@@ -56,9 +56,12 @@ class ServerSyncIntegrationTest {
             }
         }
         val settings = SettlementSettings(account = ReceiverAccount("테스트은행", "000-0000-0000"), chargePricePerKwh = 300)
+        // 서버는 끝난 달만 수동 발행한다. 지난달 운행으로 기록해 영수증 발행까지 확인한다
+        val recordedAt = java.time.LocalDateTime.now().minusMonths(1)
         val sync = ServerSync(
             api = api, store = store, carpool = local, settings = { settings }, energy = energy,
             scope = scope, seedPassengers = true, log = { logs += it; println("[sync] $it") },
+            now = { recordedAt },
             retryDelayMillis = 60_000,
         )
         val repo = ServerCarpoolRepository(local, sync, scope)
@@ -78,13 +81,13 @@ class ServerSyncIntegrationTest {
         sync.flush()
 
         assertEquals("남은 요청 없음: $logs", emptyList<TripOp>(), store.outbox)
-        val tripId = store.tripIds.getValue(trip.id)
+        val tripId = store.tripIds.entries.single { it.key.startsWith(trip.id + "#") }.value
         val result = api.trip(tripId)
         println("[server] $result")
 
         // 시각: 서버는 Z 로 돌려주지만 같은 순간이고, 운행일은 KST 날짜다
         assertTrue(result.getString("startedAt").endsWith("Z"))
-        assertEquals(trip.date.toString(), result.getString("serviceDate"))
+        assertEquals(recordedAt.toLocalDate().toString(), result.getString("serviceDate"))
         assertNotNull(result.optString("endedAt").takeIf { it.isNotEmpty() && it != "null" })
         assertEquals(1040.0, result.getDouble("endOdometerKm"), 0.0)
 
@@ -111,18 +114,30 @@ class ServerSyncIntegrationTest {
         assertTrue(crew.members.first().isDriver)
         assertEquals(trip.driver.name, crew.members.first().name)
         assertEquals(rider.id, crew.members.single { it.name == rider.name }.passengerId)
-        assertEquals(null, crew.members.single { it.name == "웹가입" }.passengerId)
+        // 초대 링크로 들어온 사람은 앱 동승자가 아니라 cm-{crewMemberId} 로 짝지어진다
+        val webMember = crew.members.single { it.name == "웹가입" }
+        assertEquals("cm-${webMember.id}", webMember.passengerId)
         assertEquals(trip.acceptedPassengers.size + 2, crew.members.size)
 
-        // 월별 정산: 발행 전에는 어림값, [정산 요청] → 서버 영수증 발행 → 서버 금액
+        // 크루 일정은 처음 준비할 때 앱 값으로 채워진다 (출발지·목적지·출발 시각)
+        val serverCrew = sync.crew.value!!
+        assertTrue(serverCrew.hasSchedule)
+        assertEquals(trip.departureTime, serverCrew.departureTime)
+        assertEquals(trip.origin.name, serverCrew.origin!!.name)
+        // 예시 동승자의 평소 탈 곳도 서버에 들어간다
+        assertEquals(rider.pickup.name, serverCrew.memberPlaces.getValue(riderCrewMemberId).board!!.name)
+
+        // 월별 정산: 이번 달은 수동 발행이 막히고(매달 1일 자동 발행), 끝난 달은 발행하면 서버 금액
         val records = MemoryTripRecords()
         val settlementRepo = com.paircar.data.server.ServerSettlementRepository(sync, repo, records, scope)
-        val month = java.time.YearMonth.from(trip.date)
-        settlementRepo.refresh()
+        val thisMonth = java.time.YearMonth.now(ServerTime.KST)
+        val month = java.time.YearMonth.from(recordedAt)
+        assertFalse(settlementRepo.canIssue(thisMonth))
+        val notClosed = runCatching { sync.issueReceipts(thisMonth) }.exceptionOrNull() as com.paircar.data.server.ApiException
+        assertEquals("SETTLEMENT_MONTH_NOT_CLOSED", notClosed.code)
         assertTrue(settlementRepo.issuesOnServer)
         settlementRepo.issue(month)
-        val issued = withTimeout(5_000) { settlementRepo.settlements.first { list -> list.any { it.month == month && it.requested } } }
-            .single { it.month == month }
+        val issued = com.paircar.data.server.issuedSettlement(month, crew.name, sync.receipts(month), listOf(rider.name))
         val riderReceipt = issued.receipts.single { it.member.name == rider.name }
         println("[settlement] ${riderReceipt.member} total=${riderReceipt.totalWon}")
         assertTrue(riderReceipt.member.issued != null)
@@ -133,11 +148,115 @@ class ServerSyncIntegrationTest {
 
         // 보낸 시각(+09:00)과 받은 시각(Z)이 같은 순간
         val startedAt = ServerTime.parse(result.getString("startedAt"))
-        assertTrue(java.time.Duration.between(startedAt, java.time.Instant.now()).abs().seconds < 120)
+        assertEquals(recordedAt.withNano(0).atZone(java.time.ZoneId.systemDefault()).toInstant(), startedAt)
         scope.cancel()
     }
-}
 
+    /**
+     * 서버 일정으로 오늘 운행 만들기, 출발 전 출석 변경, 진행 중 운행 복구(409).
+     */
+    @Test
+    fun `서버 일정과 출석으로 오늘 운행을 만들고 끝나지 않은 운행을 이어서 쓴다`() = runBlocking {
+        assumeTrue("서버 주소(-PpaircarServer)가 없어 건너뜀", !baseUrl.isNullOrBlank())
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val store = MemoryServerStore()
+        val api = PairCarApi(baseUrl!!) { store.token }
+        val local = MockCarpoolRepository(latencyMillis = 0)
+        val energy = object : VehicleEnergyRepository {
+            override suspend fun read() = VehicleEnergy(cumulativeEvEfficiency = 5.2, odometerKm = 3000.0)
+        }
+        val settings = SettlementSettings(account = ReceiverAccount("테스트은행", "000-0000-0000"))
+        val sync = ServerSync(api, store, local, { settings }, energy, scope, seedPassengers = true, log = { println("[sync] $it") }, retryDelayMillis = 60_000)
+        val repo = ServerCarpoolRepository(
+            local = local, sync = sync, scope = scope, routes = FakeRoutes(),
+            vehicleName = "전기차",
+        )
+        // 초대 API 는 IP 당 분당 10회 제한이라, 앞 테스트에 이어 돌면 429 가 난다. 풀릴 때까지 다시 준비한다
+        withTimeout(90_000) {
+            while (true) {
+                sync.flush()
+                sync.refreshCrew()
+                if (sync.crew.value?.hasSchedule == true && store.crewMemberIds.size >= 2) break
+                kotlinx.coroutines.delay(5_000)
+            }
+        }
+
+        // 서버 일정·탈 곳·출석으로 만든 운행: 예시 운행과 같은 동승자(같은 ID), 서버의 차량 충전 단가
+        val mock = com.paircar.data.mock.MockCarpoolData.todayTrip(java.time.LocalDate.now())
+        val rider = mock.pickupsInOrder.first()
+        waitUntil { local.todayTrip.value!!.passengers.map { it.id }.toSet() == mock.acceptedPassengers.map { it.id }.toSet() }
+        val car = api.car(store.carId!!)
+        assertEquals(347, car.getInt("manualFuelPriceWon"))
+
+        // 운전자가 출발 전에 불참으로 바꾸면 서버 출석에 들어가고, 다시 받아도 불참
+        repo.updateAttendance(rider.id, com.paircar.domain.model.Attendance.ABSENT)
+        waitUntil { sync.crew.value?.todayAttendance?.get(store.crewMemberIds.getValue(rider.id))?.attending == false }
+        repo.updateAttendance(rider.id, com.paircar.domain.model.Attendance.ATTENDING)
+        waitUntil { sync.crew.value?.todayAttendance?.get(store.crewMemberIds.getValue(rider.id))?.attending == true }
+
+        // 크루 정보 변경 → 서버 크루 설정
+        repo.updateCrewInfo(com.paircar.domain.model.CrewInfo("판교 퇴근 크루", java.time.LocalTime.of(18, 30), setOf(java.time.DayOfWeek.MONDAY)))
+        waitUntil { sync.crew.value?.name == "판교 퇴근 크루" }
+        assertEquals(java.time.LocalTime.of(18, 30), sync.crew.value!!.departureTime)
+        assertEquals(setOf(java.time.DayOfWeek.MONDAY), sync.crew.value!!.departureDays)
+
+        // 앱 기록을 잃은 채(새 기기 저장소) 다시 시작해도 409 의 tripId 로 진행 중 운행을 이어서 쓴다
+        repo.updateTripStatus(CarpoolStatus.IN_PROGRESS)
+        sync.flush()
+        val first = sync.serverTripId(local.todayTrip.value!!)!!
+        store.tripIds = emptyMap()
+        store.outbox = emptyList()
+        sync.onTripStarted(local.todayTrip.value!!)
+        sync.flush()
+        assertEquals(first, sync.serverTripId(local.todayTrip.value!!))
+        val current = api.currentTrip(store.crewId!!)!!
+        assertEquals(first, current.getLong("tripId"))
+        scope.cancel()
+    }
+
+    /** 크루가 없는 새 기기: [크루 만들기]로 크루·일정을 만들면 오늘 운행이 서버 일정으로 생기고 QR 을 발급할 수 있다 */
+    @Test
+    fun `크루가 없으면 크루 만들기로 크루와 일정을 만든다`() = runBlocking {
+        assumeTrue("서버 주소(-PpaircarServer)가 없어 건너뜀", !baseUrl.isNullOrBlank())
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val store = MemoryServerStore()
+        val api = PairCarApi(baseUrl!!) { store.token }
+        // 서버 모드 앱처럼 예시 운행·크루 없이 시작한다
+        val local = MockCarpoolRepository(latencyMillis = 0, tripFactory = { null }, crew = null)
+        val energy = object : VehicleEnergyRepository {
+            override suspend fun read() = VehicleEnergy(odometerKm = 0.0)
+        }
+        val settings = SettlementSettings(account = ReceiverAccount("테스트은행", "000-0000-0000"))
+        val sync = ServerSync(api, store, local, { settings }, energy, scope, seedPassengers = false, log = { println("[sync] $it") }, retryDelayMillis = 60_000)
+        val repo = ServerCarpoolRepository(local = local, sync = sync, scope = scope, routes = FakeRoutes(), vehicleName = "전기차")
+
+        sync.refreshCrew()
+        // 멤버·차량은 만들지만 크루는 사용자가 만들 때까지 만들지 않는다
+        assertNotNull(store.carId)
+        assertEquals(null, store.crewId)
+        waitUntil { repo.setupState.value == com.paircar.domain.model.CrewSetupState.NEEDS_SETUP }
+
+        val home = com.paircar.domain.model.Place("우리집", "", com.paircar.core.model.GeoPoint(37.537, 127.085))
+        val work = com.paircar.domain.model.Place("판교 사옥", "", com.paircar.core.model.GeoPoint(37.3947, 127.1115))
+        repo.setupCrew(
+            com.paircar.domain.model.CrewSetup("새 크루", java.time.LocalTime.of(7, 40), setOf(java.time.DayOfWeek.MONDAY, java.time.DayOfWeek.FRIDAY), home, work),
+        )
+        assertNotNull(store.crewId)
+        waitUntil { repo.setupState.value == com.paircar.domain.model.CrewSetupState.READY && local.todayTrip.value != null }
+        val trip = local.todayTrip.value!!
+        assertEquals(java.time.LocalTime.of(7, 40), trip.departureTime)
+        assertEquals("우리집", trip.origin.name)
+        assertEquals("판교 사옥", trip.destination.name)
+        assertEquals("전기차", trip.driver.carModel)
+        assertEquals(setOf(java.time.DayOfWeek.MONDAY, java.time.DayOfWeek.FRIDAY), repo.crew.value!!.days)
+        assertTrue(repo.createInvite().url.isNotBlank())
+        scope.cancel()
+    }
+
+    private suspend fun waitUntil(condition: () -> Boolean) = withTimeout(10_000) {
+        while (!condition()) kotlinx.coroutines.delay(100)
+    }
+}
 /**
  * 실시간 흐름: 동승자 웹 → 서버 → SSE → 차량 앱(운행 반영), 차량 앱 → 서버 → 동승자 SSE.
  * 동승자 웹 동작은 개발용으로 대신 가입시킨 동승자 토큰으로 흉내 낸다.
@@ -171,7 +290,7 @@ class ServerLiveIntegrationTest {
         routeSync.request(trip)
         repo.updateTripStatus(CarpoolStatus.IN_PROGRESS)
         sync.flush()
-        val tripId = store.tripIds.getValue(trip.id)
+        val tripId = sync.serverTripId(trip)!!
         val riderCrewMemberId = store.crewMemberIds.getValue(rider.id)
 
         // 차량 앱 구독 → 받은 알림을 운행에 반영

@@ -8,6 +8,9 @@ import ai.pleos.playground.tts.constant.ErrorType
 import ai.pleos.playground.tts.constant.Mode
 import ai.pleos.playground.tts.listener.EventListener
 import ai.pleos.playground.tts.listener.OnInitializeListener
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import java.util.Locale
 import ai.pleos.playground.tts.TextToSpeech as PleosTextToSpeech
 import android.speech.tts.TextToSpeech as AndroidTextToSpeech
@@ -38,13 +41,16 @@ class PleosSpeaker(
     private val listener = object : EventListener {
         override fun onReady() = Unit
         override fun onStart() {
-            Log.i(TAG, "TTS 말하기 시작")
+            TtsLog.add("말하기 시작")
         }
         override fun onUpdatedRms(rms: Double) = Unit
-        override fun onDone() = next()
+        override fun onDone() {
+            TtsLog.add("말하기 끝")
+            next()
+        }
         override fun onStop() = next()
         override fun onError(errorType: ErrorType) {
-            Log.w(TAG, "TTS 오류: $errorType")
+            TtsLog.add("오류: $errorType")
             next()
         }
     }
@@ -57,14 +63,14 @@ class PleosSpeaker(
                     runCatching { tts.addEventListener(listener) }.onFailure { Log.w(TAG, "TTS 리스너 등록 실패", it) }
                     runCatching { tts.setLocale(Locale.KOREA) }.onFailure { Log.w(TAG, "TTS 언어 설정 실패: $it") }
                     ready = true
-                    Log.i(TAG, "Pleos TTS 준비됨")
+                    TtsLog.add("Pleos TTS 준비됨 (ON_DEVICE, 한국어)")
                     speakNext()
                 }
             }
 
             override fun onFailure(errorType: ErrorType) {
                 main.post {
-                    Log.w(TAG, "Pleos TTS 초기화 실패: $errorType")
+                    TtsLog.add("Pleos TTS 초기화 실패: $errorType")
                     onUnavailable(errorType)
                 }
             }
@@ -89,8 +95,9 @@ class PleosSpeaker(
         if (!ready || speaking) return
         val text = queue.removeFirstOrNull() ?: return
         speaking = true
+        TtsLog.add("요청: \"$text\"")
         runCatching { tts.speak(text, true) }.onFailure {
-            Log.w(TAG, "TTS 요청 실패: $it")
+            TtsLog.add("요청 실패: $it")
             speaking = false
         }
     }
@@ -129,7 +136,7 @@ class AndroidSpeaker(context: Context) : Speaker {
                     pending.forEach(::say)
                     pending.clear()
                 } else {
-                    Log.w("PairCarTts", "안드로이드 TTS 초기화 실패: $status (TTS 엔진 없음)")
+                    TtsLog.add("안드로이드 기본 TTS 초기화 실패: $status (TTS 엔진 없음)")
                 }
             }
         }
@@ -162,10 +169,24 @@ class VehicleSpeaker(private val context: Context) : Speaker {
         val pending = pleos.drainPending()
         pleos.release()
         delegate = AndroidSpeaker(context).also { android -> pending.forEach(android::speak) }
-        Log.i("PairCarTts", "Pleos TTS 를 못 써서($error) 기본 TTS 로 바꿨습니다")
+        TtsLog.add("Pleos TTS 를 못 써서($error) 기본 TTS 로 바꿨습니다")
     }
 
     override fun speak(text: String) = delegate.speak(text)
 
     override fun release() = delegate.release()
+}
+
+/**
+ * TTS 상태 기록 (준비·요청·시작·끝·오류). logcat 태그 PairCarTts 로도 남기고,
+ * 개발용 화면(내비 연동 PoC)에서 실제로 말했는지 확인할 수 있게 흐름으로 내보낸다.
+ */
+object TtsLog {
+    private val _events = MutableSharedFlow<String>(replay = 20, extraBufferCapacity = 20)
+    val events: SharedFlow<String> = _events.asSharedFlow()
+
+    fun add(message: String) {
+        Log.i("PairCarTts", message)
+        _events.tryEmit(message)
+    }
 }
