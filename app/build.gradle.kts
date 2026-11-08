@@ -38,8 +38,17 @@ android {
     }
 
     buildTypes {
+        debug {
+            // 페어카 크루 서버. 에뮬레이터에서 10.0.2.2 = 개발 PC 의 localhost (nginx :80)
+            buildConfigField("String", "API_BASE_URL", "\"http://10.0.2.2\"")
+            // 예시 동승자를 서버 크루에 대신 가입시키지 않는다. 동승자는 초대 링크(동승자 웹)로 들어온다
+            buildConfigField("boolean", "SEED_SERVER_PASSENGERS", "false")
+        }
         release {
             isMinifyEnabled = false
+            // 배포 서버 주소가 정해지기 전까지 서버 없이 Mock 만 쓴다
+            buildConfigField("String", "API_BASE_URL", "\"\"")
+            buildConfigField("boolean", "SEED_SERVER_PASSENGERS", "false")
         }
     }
 }
@@ -57,9 +66,16 @@ dependencies {
 
     implementation(libs.pleos.navihelper)
     implementation(libs.pleos.vehicle)
+    implementation(libs.pleos.tts)
     implementation(libs.maplibre.android)
     implementation(libs.zxing.core)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.json)
+}
+
+tasks.withType<Test>().configureEach {
+    // 서버 연동 테스트: ./gradlew :app:testDebugUnitTest -PpaircarServer=http://localhost
+    (project.findProperty("paircarServer") as String?)?.let { systemProperty("paircar.server", it) }
 }

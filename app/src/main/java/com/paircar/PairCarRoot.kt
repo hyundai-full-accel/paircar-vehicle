@@ -58,6 +58,10 @@ import com.paircar.feature.crew.CrewViewModel
 import com.paircar.feature.driving.DrivingScreen
 import com.paircar.feature.history.HistoryScreen
 import com.paircar.feature.history.HistoryViewModel
+import com.paircar.domain.model.CrewSetupState
+import com.paircar.feature.crewsetup.CrewSetupScreen
+import com.paircar.feature.crewsetup.NoCrewScreen
+import com.paircar.feature.crewsetup.CrewSetupViewModel
 import com.paircar.feature.home.HomeScreen
 import com.paircar.feature.matching.MatchingScreen
 import com.paircar.feature.matching.MatchingViewModel
@@ -100,6 +104,8 @@ private fun Screen.tab(): Tab? = when (this) {
 fun PairCarRoot() {
     val carpoolViewModel: CarpoolViewModel = viewModel(factory = CarpoolViewModel.Factory)
     val state by carpoolViewModel.uiState.collectAsStateWithLifecycle()
+    val setupViewModel: CrewSetupViewModel = viewModel(factory = CrewSetupViewModel.Factory)
+    val setupState by setupViewModel.uiState.collectAsStateWithLifecycle()
 
     // 운행 중에 창을 닫았다가 다시 열면 시작 화면 없이 주행 화면으로 바로 돌아온다
     val resumingTrip = remember { carpoolViewModel.uiState.value.trip?.status == CarpoolStatus.IN_PROGRESS }
@@ -143,8 +149,31 @@ fun PairCarRoot() {
                     )
                 }
                 Box(Modifier.weight(1f).fillMaxWidth()) {
+                    // 크루·일정이 없으면 내 크루 자리에 [크루 만들기]를 보여준다 (만든 뒤 QR 을 닫을 때까지)
+                    val crewSetup: @Composable () -> Unit = {
+                        val currentLocation by setupViewModel.currentLocation.collectAsStateWithLifecycle()
+                        CrewSetupScreen(
+                            state = setupState,
+                            current = currentLocation,
+                            onUpdate = setupViewModel::update,
+                            onCreate = { setupViewModel.create(notReady) },
+                            onRegenerateInvite = setupViewModel::createInvite,
+                            onFinish = {
+                                setupViewModel.finish()
+                                // QR 을 닫으면 내 크루 탭에서 만든 크루를 보여준다
+                            },
+                        )
+                    }
+                    val needsSetup = state.trip == null || setupState.createdCrew != null
                     when (shown) {
-                        Screen.HOME -> if (!startupDone) {
+                        Screen.HOME -> if (startupDone && state.trip == null) {
+                            // 크루가 없으면 안내만 두고, 크루 만들기는 내 크루 탭에서 한다
+                            NoCrewScreen(
+                                loading = setupState.setupState == CrewSetupState.LOADING,
+                                hasCrew = setupState.existingCrew != null,
+                                onCreateCrew = { backStack = listOf(Screen.CREW) },
+                            )
+                        } else if (!startupDone) {
                             val startupViewModel: StartupViewModel = viewModel(factory = StartupViewModel.Factory)
                             val startupState by startupViewModel.uiState.collectAsStateWithLifecycle()
                             StartupScreen(startupState, onRetry = startupViewModel::start, onFinish = {
@@ -157,11 +186,14 @@ fun PairCarRoot() {
                                 autoStart = autoStartPending,
                                 onAutoStartHandled = { autoStartPending = false },
                                 onStartCarpool = { carpoolViewModel.startGuidance { navigate(Screen.DRIVING) } },
+                                onPrepareNextTrip = carpoolViewModel::prepareNextTrip,
                                 onOpenDriving = { navigate(Screen.DRIVING) },
                                 onOpenMatching = { navigate(Screen.MATCHING) },
                             )
                         }
-                        Screen.CREW -> {
+                        Screen.CREW -> if (needsSetup) {
+                            crewSetup()
+                        } else {
                             val crewViewModel: CrewViewModel = viewModel(factory = CrewViewModel.Factory)
                             val invite by crewViewModel.invite.collectAsStateWithLifecycle()
                             val crewSettlement by crewViewModel.settlement.collectAsStateWithLifecycle()

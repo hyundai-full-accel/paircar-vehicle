@@ -57,6 +57,8 @@ import com.paircar.domain.model.Crew
 import com.paircar.domain.model.CrewInfo
 import com.paircar.domain.model.Place
 import com.paircar.domain.model.korean
+import com.paircar.core.model.GeoPoint
+import com.paircar.feature.crewsetup.PlacePickerModal
 import java.time.DayOfWeek
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
@@ -71,21 +73,24 @@ private val DayChipHeight = 60.dp
 // ───────────────────────── 크루 정보 설정 ─────────────────────────
 
 /**
- * 크루 정보 설정: 이름, 출발 예정 시각, 반복 운행 요일. 출발지·도착지는 보여주기만 한다
- * (장소 검색 연동 전이라 바꿀 수 없다).
+ * 크루 정보 설정: 이름, 출발 예정 시각, 반복 운행 요일, 출발지·도착지.
+ * 출발지·도착지는 지도에서 핀으로 고른다 (장소 검색 API 가 없어 좌표로 정한다).
  */
 @Composable
 internal fun BoxScope.CrewInfoModal(
     crew: Crew,
     trip: CarpoolTrip,
+    current: GeoPoint?,
     onSave: (CrewInfo) -> Unit,
-    onMessage: (String) -> Unit,
+    @Suppress("UNUSED_PARAMETER") onMessage: (String) -> Unit,
     onClose: () -> Unit,
 ) {
     var name by remember { mutableStateOf(crew.name) }
     var time by remember { mutableStateOf(trip.departureTime) }
     var days by remember { mutableStateOf(crew.days) }
-    val placeNotReady = { onMessage("출발지·도착지 변경은 장소 검색 연동 후 제공돼요") }
+    var origin by remember { mutableStateOf(trip.origin) }
+    var destination by remember { mutableStateOf(trip.destination) }
+    var picking by remember { mutableStateOf<Boolean?>(null) } // true = 출발지, false = 도착지
 
     InScreenModal(onDismiss = onClose, maxWidth = ModalWidth) {
         TitleWithSubtitle("크루 정보 설정", "반복 운행에 적용할 정보를 관리해요", onClose)
@@ -138,13 +143,13 @@ internal fun BoxScope.CrewInfoModal(
             first = { modifier ->
                 Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     FormSectionTitle("출발지")
-                    PlaceField(trip.origin, depart = true, onClick = placeNotReady)
+                    PlaceField(origin, depart = true, onClick = { picking = true })
                 }
             },
             second = { modifier ->
                 Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     FormSectionTitle("도착지")
-                    PlaceField(trip.destination, depart = false, onClick = placeNotReady)
+                    PlaceField(destination, depart = false, onClick = { picking = false })
                 }
             },
         )
@@ -153,15 +158,33 @@ internal fun BoxScope.CrewInfoModal(
             else "운행을 시작해 오늘 시각은 바뀌지 않아요. 바꾼 시각은 다음 운행부터 적용돼요",
         )
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            PrimaryActionButton("변경 사항 저장", { onSave(CrewInfo(name, time, days)) }, Modifier.weight(1f))
+            PrimaryActionButton(
+                "변경 사항 저장",
+                {
+                    onSave(
+                        CrewInfo(
+                            name, time, days,
+                            origin = origin.takeIf { it != trip.origin },
+                            destination = destination.takeIf { it != trip.destination },
+                        ),
+                    )
+                },
+                Modifier.weight(1f),
+            )
             TonalActionButton("닫기", onClose, Modifier.weight(1f))
         }
+    }
+
+    when (picking) {
+        true -> PlacePickerModal("출발지 고르기", origin, "집", current, { origin = it; picking = null }, { picking = null })
+        false -> PlacePickerModal("도착지 고르기", destination, "회사", current, { destination = it; picking = null }, { picking = null })
+        null -> Unit
     }
 }
 
 /** 7 : 10 ⇕ (5분씩) · AM ⇕ */
 @Composable
-private fun TimeStepper(time: LocalTime, onChange: (LocalTime) -> Unit) {
+internal fun TimeStepper(time: LocalTime, onChange: (LocalTime) -> Unit) {
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         // 시안 비율: 시각 칸 : AM 칸 ≈ 1.7 : 1
         FieldBox(null, Modifier.weight(1.7f)) {
@@ -205,7 +228,7 @@ private fun PlaceField(place: Place, depart: Boolean, onClick: () -> Unit) {
     FieldBox(null, Modifier.clickable(onClick = onClick)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             if (depart) DepartIcon(Modifier.size(22.dp)) else PinIcon(Modifier.size(22.dp))
-            Text("${place.name} · ${place.area}", style = FieldTextStyle(), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(if (place.area.isBlank()) place.name else "${place.name} · ${place.area}", style = FieldTextStyle(), maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }

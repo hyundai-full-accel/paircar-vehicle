@@ -21,7 +21,8 @@ dependencyResolutionManagement {
         // https://document.pleos.ai/docs/pleos-only/getting-started
         maven {
             url = uri("https://nexus-playground.pleos.ai/repository/maven-releases/")
-            content { includeGroup("ai.pleos.playground") }
+            // TextToSpeech 는 ai.pleos.playground.security 등 하위 그룹에도 의존한다
+            content { includeGroupByRegex("ai\\.pleos\\.playground(\\..+)?") }
         }
     }
 }

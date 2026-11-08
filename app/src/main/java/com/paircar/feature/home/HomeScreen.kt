@@ -81,12 +81,13 @@ fun HomeScreen(
     autoStart: Boolean,
     onAutoStartHandled: () -> Unit,
     onStartCarpool: () -> Unit,
+    onPrepareNextTrip: () -> Unit,
     onOpenDriving: () -> Unit,
     onOpenMatching: () -> Unit,
 ) {
     val trip = state.trip
     if (trip == null) {
-        Text("오늘 카풀 일정이 없어요", style = MaterialTheme.typography.headlineMedium)
+        // 크루·일정이 없으면 앱 루트가 [크루 만들기]를 대신 보여준다
         return
     }
 
@@ -120,7 +121,8 @@ fun HomeScreen(
                 modifier,
             )
             CarpoolStatus.IN_PROGRESS -> PrimaryActionButton("주행 현황", onOpenDriving, modifier)
-            else -> Unit
+            // 오늘 운행을 끝냈거나 취소했으면 같은 날 한 번 더(퇴근길 등) 운행할 수 있게 한다
+            CarpoolStatus.COMPLETED, CarpoolStatus.CANCELLED -> PrimaryActionButton("다시 운행하기", onPrepareNextTrip, modifier)
         }
     }
 
@@ -173,7 +175,7 @@ private fun TripCard(state: CarpoolUiState, trip: CarpoolTrip, onOpenMatching: (
                     }
                     Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                         Text(trip.departureTime.format(DepartureFormat), style = MaterialTheme.typography.displayLarge.copy(fontSize = 88.sp, lineHeight = 100.sp))
-                        Text("출발 예정", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold), modifier = Modifier.padding(bottom = 16.dp))
+                        Text(trip.status.homeLabel(), style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold), modifier = Modifier.padding(bottom = 16.dp))
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         GrayChip("경유지 ${trip.pickupsInOrder.size}곳")
@@ -372,6 +374,14 @@ private fun RouteMapCard(state: CarpoolUiState, trip: CarpoolTrip, modifier: Mod
         )
         startButton(Modifier.fillMaxWidth())
     }
+}
+
+/** 출발 시각 옆에 붙는 오늘 운행 상태 */
+private fun CarpoolStatus.homeLabel(): String = when (this) {
+    CarpoolStatus.SCHEDULED -> "출발 예정"
+    CarpoolStatus.IN_PROGRESS -> "운행 중"
+    CarpoolStatus.COMPLETED -> "운행 완료"
+    CarpoolStatus.CANCELLED -> "운행 취소"
 }
 
 private val DateFormat = DateTimeFormatter.ofPattern("yyyy.MM.dd")

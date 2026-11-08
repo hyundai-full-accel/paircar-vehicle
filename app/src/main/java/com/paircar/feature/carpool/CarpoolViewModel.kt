@@ -12,6 +12,7 @@ import com.paircar.domain.repository.RoutePreviewRepository
 import com.paircar.domain.model.BoardingStatus
 import com.paircar.domain.model.CarpoolAction
 import com.paircar.domain.model.CarpoolStatus
+import com.paircar.domain.model.RouteComparison
 import com.paircar.domain.model.CarpoolTrip
 import com.paircar.domain.model.Crew
 import com.paircar.domain.model.DrivingPolicy
@@ -141,10 +142,11 @@ class CarpoolViewModel(
                 settlements.firstOrNull()?.policy?.withSettings(settings)?.withVehicle(energy)
             }
             combine(carpoolRepository.todayTrip, routePreview, directPreview, sharedPreview, policies) { trip, planned, direct, shared, policy ->
-                val routes = listOfNotNull(planned, direct, shared)
-                if (trip == null || policy == null || routes.size < 3 || routes.any { it.isApproximate }) return@combine null
-                val detourKm = ((planned!!.distanceMeters - direct!!.distanceMeters) / 1000.0).coerceAtLeast(0.0)
-                policy.estimateRideWon(shared!!.distanceMeters / 1000.0, headcount = 1 + trip.pickupsInOrder.size, detourKm = detourKm)
+                if (trip == null || policy == null || planned == null || direct == null || shared == null || shared.isApproximate) {
+                    return@combine null
+                }
+                val detourKm = RouteComparison.of(planned, direct)?.extraKm ?: return@combine null
+                policy.estimateRideWon(shared.distanceMeters / 1000.0, headcount = 1 + trip.pickupsInOrder.size, detourKm = detourKm)
             }.collect { estimatedShare.value = it }
         }
     }
@@ -201,6 +203,11 @@ class CarpoolViewModel(
             naviRepository.cancelRoute()
             carpoolRepository.updateTripStatus(CarpoolStatus.CANCELLED)
         }
+    }
+
+    /** 끝났거나 취소한 오늘 운행을 출발 전으로 돌린다 (같은 날 한 번 더 운행) */
+    fun prepareNextTrip() {
+        viewModelScope.launch { carpoolRepository.prepareNextTrip() }
     }
 
     fun showMessage(text: String) {

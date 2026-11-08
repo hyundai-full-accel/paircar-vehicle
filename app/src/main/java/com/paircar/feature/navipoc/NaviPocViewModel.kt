@@ -22,6 +22,8 @@ import com.paircar.domain.model.RouteRequest
 import com.paircar.domain.model.WaypointSlot
 import com.paircar.domain.repository.DrivingStateRepository
 import com.paircar.domain.repository.NaviRepository
+import com.paircar.vehicle.tts.Speaker
+import com.paircar.vehicle.tts.TtsLog
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -45,9 +47,21 @@ class NaviPocViewModel(
     private val naviRepository: NaviRepository,
     private val drivingStateRepository: DrivingStateRepository,
     private val pickupNotifier: PickupNotifier,
+    private val speaker: Speaker,
 ) : ViewModel() {
 
     private val log = MutableStateFlow<List<String>>(emptyList())
+
+    init {
+        // TTS 준비·시작·끝·오류를 이 화면 로그에 보여준다
+        viewModelScope.launch { TtsLog.events.collect { append("TTS $it") } }
+    }
+
+    /** 음성 안내 확인용: 동승자 알림과 같은 문장을 연달아 두 개 말한다 (두 번째는 첫 문장이 끝난 뒤) */
+    fun speakTest() {
+        speaker.speak("차수아님이 5분 늦어요")
+        speaker.speak("차수아님이 판교역 4번 출구에서 타요")
+    }
 
     val uiState: StateFlow<NaviPocUiState> = combine(
         naviRepository.connectionState,
@@ -141,7 +155,7 @@ class NaviPocViewModel(
         val Factory = viewModelFactory {
             initializer {
                 val container = (this[APPLICATION_KEY] as PairCarApplication).container
-                NaviPocViewModel(container.naviRepository, container.drivingStateRepository, container.pickupNotifier)
+                NaviPocViewModel(container.naviRepository, container.drivingStateRepository, container.pickupNotifier, container.speaker)
             }
         }
     }
