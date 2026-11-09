@@ -168,11 +168,11 @@ fun PairCarRoot() {
                         )
                     }
                     val needsSetup = state.trip == null || setupState.createdCrew != null
-                    // 내 크루 탭(크루 만들기 뒤 QR 화면 포함)이 보이는 동안 1초마다 크루원 명단을 확인한다
-                    if (shown == Screen.CREW) {
+                    // 오늘의 카풀·내 크루 탭(크루 만들기 뒤 QR 화면 포함)이 보이는 동안 1초마다 크루원·오늘 출석을 확인한다
+                    if (shown == Screen.HOME || shown == Screen.CREW) {
                         val lifecycle = LocalLifecycleOwner.current.lifecycle
                         LaunchedEffect(lifecycle) {
-                            lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) { carpoolViewModel.watchCrewMembers() }
+                            lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) { carpoolViewModel.watchCrew() }
                         }
                     }
                     when (shown) {

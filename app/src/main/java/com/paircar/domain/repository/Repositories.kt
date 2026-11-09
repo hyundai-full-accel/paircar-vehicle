@@ -48,8 +48,8 @@ interface CarpoolRepository {
 
     suspend fun refresh()
 
-    /** 크루원 명단만 가볍게 확인하고, 바뀌었으면 크루를 다시 받는다 (내 크루 화면이 보이는 동안 1초마다) */
-    suspend fun pollCrewMembers() {}
+    /** 크루원 명단·오늘 출석만 가볍게 확인하고, 바뀌었으면 크루(→ 출발 전 오늘 운행 경로)를 다시 받는다 (오늘의 카풀·내 크루 화면이 보이는 동안 1초마다) */
+    suspend fun pollCrew() {}
 
     suspend fun updateMatchStatus(passengerId: String, status: MatchStatus)
     suspend fun updateBoardingStatus(passengerId: String, status: BoardingStatus)

@@ -252,13 +252,22 @@ class ServerSyncIntegrationTest {
         val invite = repo.createInvite()
         assertTrue(invite.url.isNotBlank())
 
-        // 내 크루 화면의 1초 확인: 초대로 누가 들어오면 명단만 보고 크루를 다시 받는다
+        // 오늘의 카풀·내 크루 화면의 1초 확인: 초대로 누가 들어오면 명단만 보고 크루를 다시 받는다
         val before = repo.crew.value!!.members.map { it.name }
-        repo.pollCrewMembers()
+        repo.pollCrew()
         assertEquals("명단이 그대로면 바뀌지 않는다", before, repo.crew.value!!.members.map { it.name })
-        api.joinAsNewMember(invite.code, "새동승자")
-        repo.pollCrewMembers()
+        val joined = api.joinAsNewMember(invite.code, "새동승자")
+        repo.pollCrew()
         waitUntil { repo.crew.value!!.members.any { it.name == "새동승자" } }
+
+        // 동승자가 웹에서 탈 곳을 정하면 다음 확인 때 출발 전 오늘 운행의 경유지(경로)로 들어온다
+        val riderToken = joined.getString("token")
+        val riderApi = PairCarApi(baseUrl) { riderToken }
+        val crewId = store.crewId!!
+        val pickup = riderApi.registerPlace(crewId, "판교역 1번 출구", 37.3949, 127.1112).getLong("placeId")
+        riderApi.updateMemberPlaces(crewId, joined.getLong("crewMemberId"), pickup, null)
+        repo.pollCrew()
+        waitUntil { local.todayTrip.value!!.passengers.any { it.name == "새동승자" && it.pickup.name == "판교역 1번 출구" } }
         scope.cancel()
     }
 

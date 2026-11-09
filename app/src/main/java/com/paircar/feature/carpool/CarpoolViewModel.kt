@@ -168,12 +168,13 @@ class CarpoolViewModel(
     }
 
     /**
-     * 내 크루 화면이 보이는 동안 [CREW_POLL_MILLIS] 마다 크루원 명단을 확인한다.
-     * 초대 QR 로 들어온 크루원이 화면을 다시 열지 않아도 바로 보이도록 (명단이 바뀔 때만 크루를 다시 받는다).
+     * 오늘의 카풀·내 크루 화면이 보이는 동안 [CREW_POLL_MILLIS] 마다 크루원 명단·오늘 출석을 확인한다.
+     * 초대로 들어온 크루원, 동승자가 바꾼 탈 곳·참석이 화면을 다시 열지 않아도 바로 오늘 운행 경로에 반영되도록
+     * (바뀌었을 때만 크루를 다시 받는다).
      */
-    suspend fun watchCrewMembers() {
+    suspend fun watchCrew() {
         while (true) {
-            carpoolRepository.pollCrewMembers()
+            carpoolRepository.pollCrew()
             kotlinx.coroutines.delay(CREW_POLL_MILLIS)
         }
     }
