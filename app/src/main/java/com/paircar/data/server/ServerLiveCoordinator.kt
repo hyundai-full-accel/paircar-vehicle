@@ -80,8 +80,8 @@ class ServerLiveCoordinator(
     }
 
     private companion object {
-        /** 문서: 5~10초마다 */
-        const val LOCATION_INTERVAL_MILLIS = 10_000L
+        /** 문서: 5~10초마다 (시뮬레이션처럼 빨리 움직일 때 곧 도착을 놓치지 않도록 짧은 쪽) */
+        const val LOCATION_INTERVAL_MILLIS = 5_000L
 
         /** 문서: addProximityAlert(정문 300m) */
         const val APPROACHING_METERS = 300

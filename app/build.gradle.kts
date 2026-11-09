@@ -43,12 +43,15 @@ android {
             buildConfigField("String", "API_BASE_URL", "\"http://10.0.2.2\"")
             // 예시 동승자를 서버 크루에 대신 가입시키지 않는다. 동승자는 초대 링크(동승자 웹)로 들어온다
             buildConfigField("boolean", "SEED_SERVER_PASSENGERS", "false")
+            // 시연용: 주행을 시작하면 차가 경로를 따라 움직이는 것처럼 만든다 (에뮬레이터 내비는 차가 움직이지 않는다)
+            buildConfigField("boolean", "SIMULATE_DRIVE", "true")
         }
         release {
             isMinifyEnabled = false
             // 배포 서버 주소가 정해지기 전까지 서버 없이 Mock 만 쓴다
             buildConfigField("String", "API_BASE_URL", "\"\"")
             buildConfigField("boolean", "SEED_SERVER_PASSENGERS", "false")
+            buildConfigField("boolean", "SIMULATE_DRIVE", "false")
         }
     }
 }

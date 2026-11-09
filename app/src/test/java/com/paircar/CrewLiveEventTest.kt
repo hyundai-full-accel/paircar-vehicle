@@ -11,6 +11,7 @@ import com.paircar.domain.model.NaviCommandResult
 import com.paircar.domain.model.Place
 import com.paircar.domain.model.RouteRequest
 import com.paircar.domain.model.WaypointProgress
+import com.paircar.domain.model.WaypointSlot
 import com.paircar.domain.repository.NaviRepository
 import com.paircar.domain.usecase.ApplyCrewLiveEventUseCase
 import com.paircar.domain.usecase.CarpoolRouteSync
@@ -53,6 +54,9 @@ class ApplyCrewLiveEventTest {
 
     private class RecordingNavi(private val inner: NaviRepository) : NaviRepository by inner {
         val requests = mutableListOf<RouteRequest>()
+        val removed = mutableListOf<WaypointSlot>()
+        override fun removeWaypoint(slot: WaypointSlot): NaviCommandResult =
+            inner.removeWaypoint(slot).also { removed += slot }
         override fun requestRoute(request: RouteRequest): NaviCommandResult =
             inner.requestRoute(request).also { requests += request }
     }
@@ -73,7 +77,7 @@ class ApplyCrewLiveEventTest {
     private suspend fun MockCarpoolRepository.start() = updateTripStatus(CarpoolStatus.IN_PROGRESS)
 
     @Test
-    fun `동승자가 불참하면 경유지에서 빼고 내비 경로를 다시 요청한다`() = runTest {
+    fun `동승자가 불참하면 내비에서 그 경유지만 지운다`() = runTest {
         val (carpool, navi, apply) = setUp()
         carpool.start()
         assertEquals(listOf("판교역 1번 출구", "양재시민의숲역 1번 출구"), navi.requests.last().waypoints.map { it.name })
@@ -81,7 +85,9 @@ class ApplyCrewLiveEventTest {
         apply(CrewLiveEvent.RiderAbsent("p-1", "차수아"))
 
         assertEquals(Attendance.ABSENT, carpool.todayTrip.value!!.passengers.first { it.id == "p-1" }.attendance)
-        assertEquals(listOf("양재시민의숲역 1번 출구"), navi.requests.last().waypoints.map { it.name })
+        // 경로를 다시 요청하지 않는다 (내비 경로 선택 화면이 다시 뜨지 않는다)
+        assertEquals(1, navi.requests.size)
+        assertEquals(listOf(WaypointSlot.FIRST), navi.removed)
         assertEquals(listOf("차수아님이 오늘은 안 타요"), notices)
     }
 

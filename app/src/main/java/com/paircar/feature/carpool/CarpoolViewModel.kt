@@ -167,6 +167,17 @@ class CarpoolViewModel(
         naviRepository.refreshRouteState()
     }
 
+    /**
+     * 내 크루 화면이 보이는 동안 [CREW_POLL_MILLIS] 마다 크루원 명단을 확인한다.
+     * 초대 QR 로 들어온 크루원이 화면을 다시 열지 않아도 바로 보이도록 (명단이 바뀔 때만 크루를 다시 받는다).
+     */
+    suspend fun watchCrewMembers() {
+        while (true) {
+            carpoolRepository.pollCrewMembers()
+            kotlinx.coroutines.delay(CREW_POLL_MILLIS)
+        }
+    }
+
     /** 남은 픽업 지점을 경유지로 내비 경로를 요청하고, 성공하면 운행 중으로 바꾼다. */
     fun startGuidance(onRequested: () -> Unit = {}) {
         val trip = carpoolRepository.todayTrip.value ?: return
@@ -225,7 +236,7 @@ class CarpoolViewModel(
             carpoolRepository.updateBoardingStatus(passengerId, status)
             val trip = carpoolRepository.todayTrip.value ?: return@launch
             when (val result = routeSync.sync(trip)) {
-                NaviCommandResult.Requested -> message.value = "남은 경유지로 내비 경로를 다시 요청했어요"
+                NaviCommandResult.Requested -> message.value = "내비 경유지를 바꿨어요"
                 is NaviCommandResult.Rejected -> message.value = result.toUserMessage()
                 null -> Unit
             }
@@ -246,6 +257,8 @@ class CarpoolViewModel(
     }
 
     companion object {
+        const val CREW_POLL_MILLIS = 1_000L
+
         val Factory = viewModelFactory {
             initializer {
                 val container = (this[APPLICATION_KEY] as PairCarApplication).container

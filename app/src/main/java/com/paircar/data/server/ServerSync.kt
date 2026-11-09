@@ -112,6 +112,28 @@ class ServerSync(
         }
     }
 
+    /** 마지막으로 받은 크루원 명단(GET members 응답). 같으면 크루를 다시 받지 않는다 */
+    @Volatile
+    private var memberSignature: String? = null
+
+    /**
+     * 내 크루 화면이 보이는 동안 자주 부른다: 크루원 명단만 받아 보고(요청 1번),
+     * 초대로 새 크루원이 들어왔거나 이름·평소 탈 곳이 바뀌었으면 크루 전체를 다시 받는다.
+     */
+    suspend fun pollMembers() {
+        val crewId = store.crewId ?: return
+        if (store.token == null) return
+        val signature = try {
+            api.crewMembers(crewId).toString()
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            return
+        }
+        if (signature == memberSignature) return
+        log("크루원 명단이 바뀌어 크루를 다시 받습니다")
+        refreshCrew()
+    }
+
     /**
      * [크루 만들기]: 내 크루가 없으면 만들고, 출발지·도착지를 크루 장소로 등록해 일정을 저장한다.
      * 실패하면 예외 (화면에 알린다).
@@ -140,7 +162,8 @@ class ServerSync(
     private suspend fun loadCrew() {
         val crewId = store.crewId ?: return
         val crew = api.crew(crewId)
-        val members = api.crewMembers(crewId).objects()
+        val memberArray = api.crewMembers(crewId)
+        val members = memberArray.objects()
         val attendance = api.attendance(crewId, LocalDate.now(ServerTime.KST).toString()).objects()
         val me = store.memberId
         members.firstOrNull { it.getLong("memberId") == me }?.let { store.driverCrewMemberId = it.getLong("crewMemberId") }
@@ -160,6 +183,7 @@ class ServerSync(
         // 서버 장소를 기억해 두면 운행 시작·우회 거리 등록 때 같은 장소를 다시 등록하지 않는다
         store.placeIds = store.placeIds + places.associate { it.ref.key to it.placeId }
 
+        memberSignature = memberArray.toString()
         _crew.value = ServerCrew(
             crewId = crewId,
             name = crew.getString("name"),

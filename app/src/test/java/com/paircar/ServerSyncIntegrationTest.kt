@@ -249,7 +249,16 @@ class ServerSyncIntegrationTest {
         assertEquals("판교 사옥", trip.destination.name)
         assertEquals("전기차", trip.driver.carModel)
         assertEquals(setOf(java.time.DayOfWeek.MONDAY, java.time.DayOfWeek.FRIDAY), repo.crew.value!!.days)
-        assertTrue(repo.createInvite().url.isNotBlank())
+        val invite = repo.createInvite()
+        assertTrue(invite.url.isNotBlank())
+
+        // 내 크루 화면의 1초 확인: 초대로 누가 들어오면 명단만 보고 크루를 다시 받는다
+        val before = repo.crew.value!!.members.map { it.name }
+        repo.pollCrewMembers()
+        assertEquals("명단이 그대로면 바뀌지 않는다", before, repo.crew.value!!.members.map { it.name })
+        api.joinAsNewMember(invite.code, "새동승자")
+        repo.pollCrewMembers()
+        waitUntil { repo.crew.value!!.members.any { it.name == "새동승자" } }
         scope.cancel()
     }
 

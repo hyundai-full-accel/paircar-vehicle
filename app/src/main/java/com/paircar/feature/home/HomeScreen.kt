@@ -44,7 +44,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.paircar.core.ui.components.CarHeaderArt
+import com.paircar.core.ui.components.CarHeaderBackdrop
 import com.paircar.core.ui.components.ExpandedWidthThreshold
 import com.paircar.core.ui.components.GrayChip
 import com.paircar.core.ui.components.InfoIcon
@@ -161,12 +161,12 @@ fun HomeScreen(
 
 @Composable
 private fun TripCard(state: CarpoolUiState, trip: CarpoolTrip, onOpenMatching: () -> Unit, fillHeight: Boolean, modifier: Modifier) {
-    Box(modifier.clip(RoundedCornerShape(24.dp)).background(DsColors.Surface)) {
-        // 헤더(구분선 위) 높이에 맞춰야 차가 경유지 변경 알림 밑으로 숨지 않는다
-        // 넓은 카드에서 꽉 채우면 차가 위아래로 잘려, 오른쪽 60% 에만 깐다
-        CarHeaderArt(Modifier.align(Alignment.TopEnd).fillMaxWidth(0.6f).height(220.dp))
-        Column(Modifier.padding(horizontal = 36.dp, vertical = 32.dp)) {
-            Row {
+    Column(modifier.clip(RoundedCornerShape(24.dp)).background(DsColors.Surface)) {
+        // 시안: 차 그림은 카드 너비 전체·위쪽 끝부터 첫 구분선까지(머리 영역)에 깔린다.
+        // 머리 내용(칩 줄 수 등)에 따라 높이가 바뀌어도 머리 영역 크기를 그대로 따른다
+        Box(Modifier.fillMaxWidth()) {
+            CarHeaderBackdrop(Modifier.matchParentSize())
+            Row(Modifier.padding(start = 36.dp, end = 36.dp, top = 32.dp, bottom = 24.dp)) {
                 Column(Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Box(Modifier.size(28.dp).background(DsColors.Segment, RoundedCornerShape(6.dp)))
@@ -189,7 +189,13 @@ private fun TripCard(state: CarpoolUiState, trip: CarpoolTrip, onOpenMatching: (
                     GrayChip(connectionChip(state.naviConnection, state.naviProvider), Modifier.background(DsColors.Surface, RoundedCornerShape(50)))
                 }
             }
-            CardDivider()
+        }
+        Column(
+            Modifier
+                .then(if (fillHeight) Modifier.weight(1f) else Modifier)
+                .padding(start = 36.dp, end = 36.dp, bottom = 32.dp),
+        ) {
+            HorizontalDivider(Modifier.padding(bottom = 24.dp), color = DsColors.Divider)
             trip.changedPickups.forEach { passenger -> PickupChangeNotice(passenger) }
             if (trip.changedPickups.isNotEmpty()) CardDivider()
             if (fillHeight) Spacer(Modifier.weight(1f))

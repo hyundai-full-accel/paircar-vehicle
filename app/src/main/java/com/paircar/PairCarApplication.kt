@@ -2,7 +2,10 @@ package com.paircar
 
 import android.app.Application
 import com.paircar.core.common.AppContainer
+import com.paircar.domain.model.BoardingStatus
+import com.paircar.domain.model.CarpoolStatus
 import com.paircar.domain.model.NaviEvent
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 class PairCarApplication : Application() {
@@ -30,8 +33,28 @@ class PairCarApplication : Application() {
                 applyNaviEvent(event)
                 if (event is NaviEvent.WaypointArrived) {
                     pickupNotifier.notifyPickupArrived(event.name)
+                    if (simulatedDrive?.enabled == true) simulateBoarding()
                 }
             }
         }
+    }
+
+    /**
+     * 시연용: 실차는 도어 → 벨트로 탑승을 감지한다. 시뮬레이션에서는 경유지에 도착하고 잠시 뒤
+     * 그 자리에서 기다리던 동승자를 탑승 처리하고 음성으로 알린다 (운전자가 버튼을 누르지 않아도 된다).
+     */
+    private fun AppContainer.simulateBoarding() {
+        applicationScope.launch {
+            delay(BOARDING_DELAY_MILLIS)
+            val trip = carpoolRepository.todayTrip.value ?: return@launch
+            if (trip.status != CarpoolStatus.IN_PROGRESS) return@launch
+            val rider = trip.passengers.firstOrNull { it.boardingStatus == BoardingStatus.ARRIVED_AT_PICKUP } ?: return@launch
+            carpoolRepository.updateBoardingStatus(rider.id, BoardingStatus.BOARDED)
+            speaker.speak("${rider.name}님 탑승했어요")
+        }
+    }
+
+    private companion object {
+        const val BOARDING_DELAY_MILLIS = 4_000L
     }
 }

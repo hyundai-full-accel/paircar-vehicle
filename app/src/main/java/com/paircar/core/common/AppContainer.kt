@@ -39,6 +39,8 @@ import com.paircar.domain.usecase.StartCarpoolGuidanceUseCase
 import com.paircar.domain.usecase.TripRecorder
 import com.paircar.vehicle.energy.PleosVehicleEnergyRepository
 import com.paircar.vehicle.navi.NaviRepositoryFactory
+import com.paircar.vehicle.navi.SimulatedDriveNavi
+import com.paircar.domain.model.NaviProvider
 import com.paircar.vehicle.tts.Speaker
 import com.paircar.vehicle.tts.VehicleSpeaker
 import com.paircar.vehicle.state.CarDrivingStateRepository
@@ -124,7 +126,20 @@ class AppContainer(context: Context) {
         seed = if (useServer) emptyList() else MockTripHistory.records(until = LocalDate.now()),
     )
 
-    val naviRepository: NaviRepository = NaviRepositoryFactory.create(context, applicationScope)
+    private val realNavi: NaviRepository = NaviRepositoryFactory.create(context, applicationScope)
+
+    /**
+     * 시연용 차량 이동 시뮬레이션 (디버그 빌드 + Pleos 내비). 에뮬레이터 내비는 차가 움직이지 않아
+     * 주행을 시작하면 경로를 따라 차가 가는 것처럼 위치·경유지 도착·목적지 도착을 만든다.
+     */
+    val simulatedDrive: SimulatedDriveNavi? =
+        if (BuildConfig.SIMULATE_DRIVE && realNavi.provider == NaviProvider.PLEOS) {
+            SimulatedDriveNavi(realNavi, routePreviewRepository, applicationScope, startPoint = { carpoolRepository.todayTrip.value?.origin?.point })
+        } else {
+            null
+        }
+
+    val naviRepository: NaviRepository = simulatedDrive ?: realNavi
 
     val drivingStateRepository: DrivingStateRepository = CarDrivingStateRepository(context)
 
