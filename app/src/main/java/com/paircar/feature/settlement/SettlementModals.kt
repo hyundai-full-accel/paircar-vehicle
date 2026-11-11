@@ -23,8 +23,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
@@ -46,6 +44,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.paircar.core.ui.components.ChevronIcon
 import com.paircar.core.ui.components.ChoiceChip
 import com.paircar.core.ui.components.ExpandedWidthThreshold
@@ -73,11 +72,32 @@ import com.paircar.domain.model.TripStopType
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-/** 수취 계좌로 고를 수 있는 은행 */
+/**
+ * 수취 계좌로 고를 수 있는 은행. 정식 로고 이미지 대신 은행별 대표색 원형 배지에 약칭을 쓴다
+ * (로고는 각 은행 상표라 받아 넣지 않는다. 승인받은 로고가 생기면 [BankBadge] 만 이미지로 바꾸면 된다).
+ */
+private data class BankMark(val name: String, val short: String, val color: Color, val onColor: Color = Color.White)
+
 private val Banks = listOf(
-    "KB국민", "신한", "우리", "하나", "NH농협", "IBK기업", "카카오뱅크", "토스뱅크",
-    "케이뱅크", "SC제일", "우체국", "새마을금고", "부산", "대구", "경남", "광주",
+    BankMark("KB국민", "KB", Color(0xFFFFBC00), Color(0xFF4E4637)),
+    BankMark("신한", "신한", Color(0xFF0046FF)),
+    BankMark("우리", "우리", Color(0xFF0067AC)),
+    BankMark("하나", "하나", Color(0xFF009490)),
+    BankMark("NH농협", "NH", Color(0xFF0BA04B)),
+    BankMark("IBK기업", "IBK", Color(0xFF004B9C)),
+    BankMark("카카오뱅크", "카카오", Color(0xFFFFE300), Color(0xFF3A1D1D)),
+    BankMark("토스뱅크", "토스", Color(0xFF0064FF)),
+    BankMark("케이뱅크", "K", Color(0xFF1E1A8C)),
+    BankMark("SC제일", "SC", Color(0xFF0473EA)),
+    BankMark("우체국", "우체국", Color(0xFFE4002B)),
+    BankMark("새마을금고", "MG", Color(0xFF0A3F8F)),
+    BankMark("부산", "부산", Color(0xFFD7282F)),
+    BankMark("대구", "대구", Color(0xFF0067B1)),
+    BankMark("경남", "경남", Color(0xFFC8102E)),
+    BankMark("광주", "광주", Color(0xFF00467F)),
 )
+
+private fun bankMark(name: String?): BankMark? = Banks.firstOrNull { it.name == name }
 
 private val AccountDigits = 10..14
 private val PriceRange = 1..2_000
@@ -103,12 +123,13 @@ internal fun BoxScope.SettingsModal(
     var price by remember { mutableStateOf((settings.chargePricePerKwh ?: settlement.policy.chargePricePerKwh).toString()) }
     var efficiency by remember { mutableStateOf((settings.efficiencyKmPerKwh ?: settlement.policy.efficiencyKmPerKwh).efficiency()) }
     var error by remember { mutableStateOf<String?>(null) }
+    var pickingBank by remember { mutableStateOf(false) }
 
     InScreenModal(onDismiss = onClose, maxWidth = 1100.dp) {
         ModalTitle("정산 정보 설정", onClose)
         BoxWithConstraints(Modifier.fillMaxWidth()) {
             val account: @Composable (Modifier) -> Unit = { modifier ->
-                AccountSection(bank, { bank = it }, number, { number = it }, settlement.receiverName, modifier)
+                AccountSection(bank, { pickingBank = true }, number, { number = it }, settlement.receiverName, modifier)
             }
             val costs: @Composable (Modifier) -> Unit = { modifier ->
                 CostSection(
@@ -151,6 +172,18 @@ internal fun BoxScope.SettingsModal(
             TonalActionButton("닫기", onClose, Modifier.weight(1f))
         }
     }
+    // 설정 창 위에 겹쳐 띄운다 (뒤로 가기는 이 창부터 닫힌다)
+    if (pickingBank) {
+        BankSheet(
+            selected = bank,
+            onPick = {
+                bank = it
+                error = null
+                pickingBank = false
+            },
+            onClose = { pickingBank = false },
+        )
+    }
 }
 
 /** 입력값을 검사해 저장할 설정을 만든다. 문제가 있으면 안내 문구를 담은 실패 */
@@ -181,7 +214,7 @@ private fun validate(
 @Composable
 private fun AccountSection(
     bank: String?,
-    onBank: (String) -> Unit,
+    onPickBank: () -> Unit,
     number: String,
     onNumber: (String) -> Unit,
     holder: String,
@@ -189,7 +222,7 @@ private fun AccountSection(
 ) {
     Column(modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
         FormSectionTitle("수취 계좌 등록", "정산 금액을 받을 계좌를 등록해요")
-        BankPicker(bank, onBank)
+        BankField(bank, onPickBank)
         FieldBox("계좌번호") {
             BasicTextField(
                 value = number,
@@ -234,31 +267,75 @@ private fun AccountSection(
     }
 }
 
+/** 은행 칸: 고른 은행의 배지와 이름. 누르면 은행 선택 창이 열린다 */
 @Composable
-private fun BankPicker(bank: String?, onBank: (String) -> Unit) {
-    var expanded by remember { mutableStateOf(false) }
-    Box {
-        FieldBox("은행", Modifier.clickable { expanded = true }) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    bank ?: "은행 선택",
-                    style = FieldTextStyle().copy(color = if (bank == null) DsColors.OnSurfaceMuted else DsColors.OnSurface),
-                    modifier = Modifier.weight(1f),
-                )
-                ChevronIcon(Modifier.size(24.dp).rotate(90f), color = DsColors.OnSurface)
+private fun BankField(bank: String?, onPick: () -> Unit) {
+    val mark = bankMark(bank)
+    FieldBox("은행", Modifier.clickable(onClick = onPick)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (mark != null) BankBadge(mark, 32.dp)
+            Text(
+                bank ?: "은행을 골라 주세요",
+                style = FieldTextStyle().copy(color = if (bank == null) DsColors.OnSurfaceMuted else DsColors.OnSurface),
+                modifier = Modifier.weight(1f),
+            )
+            ChevronIcon(Modifier.size(24.dp).rotate(90f), color = DsColors.OnSurface)
+        }
+    }
+}
+
+/** 은행 선택 창: 4열 그리드. 고르면 바로 닫힌다 */
+@Composable
+private fun BoxScope.BankSheet(selected: String?, onPick: (String) -> Unit, onClose: () -> Unit) {
+    InScreenModal(onDismiss = onClose, maxWidth = 760.dp) {
+        ModalTitle("은행 선택", onClose)
+        Text("정산 금액을 받을 은행을 골라 주세요", style = MaterialTheme.typography.bodyMedium, color = DsColors.OnSurfaceMuted)
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Banks.chunked(4).forEach { row ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    row.forEach { mark -> BankTile(mark, mark.name == selected, { onPick(mark.name) }, Modifier.weight(1f)) }
+                }
             }
         }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            Banks.forEach { item ->
-                DropdownMenuItem(
-                    text = { Text(item, style = MaterialTheme.typography.bodyLarge) },
-                    onClick = {
-                        expanded = false
-                        onBank(item)
-                    },
-                )
-            }
-        }
+    }
+}
+
+@Composable
+private fun BankTile(mark: BankMark, selected: Boolean, onClick: () -> Unit, modifier: Modifier) {
+    val shape = RoundedCornerShape(16.dp)
+    Column(
+        modifier
+            .clip(shape)
+            .border(if (selected) 2.dp else 1.dp, if (selected) DsColors.Brand else DsColors.Divider, shape)
+            .background(if (selected) DsColors.Brand.copy(alpha = 0.06f) else DsColors.Surface)
+            .clickable(onClick = onClick)
+            .padding(vertical = 18.dp, horizontal = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        BankBadge(mark, 52.dp)
+        Text(
+            mark.name,
+            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium),
+            color = if (selected) DsColors.Brand else DsColors.OnSurface,
+            maxLines = 1,
+        )
+    }
+}
+
+/** 은행 대표색 원형 배지 + 약칭 */
+@Composable
+private fun BankBadge(mark: BankMark, size: Dp) {
+    Box(Modifier.size(size).clip(CircleShape).background(mark.color), contentAlignment = Alignment.Center) {
+        val scale = size.value / 52f
+        Text(
+            mark.short,
+            color = mark.onColor,
+            fontWeight = FontWeight.ExtraBold,
+            fontSize = (if (mark.short.length >= 3) 13 else 16).sp * scale,
+            letterSpacing = (-0.3).sp,
+            maxLines = 1,
+        )
     }
 }
 
