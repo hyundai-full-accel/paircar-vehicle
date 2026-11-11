@@ -47,6 +47,10 @@ interface CarpoolRepository {
     suspend fun setupCrew(setup: CrewSetup)
 
     suspend fun refresh()
+
+    /** 크루원 명단·오늘 출석만 가볍게 확인하고, 바뀌었으면 크루(→ 출발 전 오늘 운행 경로)를 다시 받는다 (오늘의 카풀·내 크루 화면이 보이는 동안 1초마다) */
+    suspend fun pollCrew() {}
+
     suspend fun updateMatchStatus(passengerId: String, status: MatchStatus)
     suspend fun updateBoardingStatus(passengerId: String, status: BoardingStatus)
     suspend fun updateTripStatus(status: CarpoolStatus)
@@ -145,6 +149,12 @@ interface NaviRepository {
 
     fun requestRoute(request: RouteRequest): NaviCommandResult
     fun addWaypoint(place: Place, slot: WaypointSlot): NaviCommandResult
+
+    /**
+     * 경유지 하나만 뺀다 (NaviHelper removeWaypoint). 경로를 통째로 다시 요청하면 내비에 경로 선택 화면과
+     * 카운트다운이 다시 뜨지만, 이것은 지금 안내를 이어서 다시 탐색만 한다.
+     */
+    fun removeWaypoint(slot: WaypointSlot): NaviCommandResult
     fun cancelRoute(): NaviCommandResult
     /** 경로 상태/목적지/경유지 정보를 다시 요청한다. 결과는 [guidanceState]에 반영된다. */
     fun refreshRouteState(): NaviCommandResult

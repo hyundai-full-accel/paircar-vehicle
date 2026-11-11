@@ -113,8 +113,13 @@ fun estimatedSettlement(
     roster: List<String>,
     records: List<TripRecord>,
 ): MonthlySettlement? {
-    val carpools = records.filter { YearMonth.from(it.date) == month && it.passengerNames.isNotEmpty() }
-    val names = (roster + carpools.flatMap { it.passengerNames }).distinct()
+    // 기기의 운행 기록에는 크루 구분이 없어 예전 크루(시연·테스트 크루 등)의 동승자도 섞여 있다.
+    // 지금 크루원 명단을 알면 그 크루원이 탄 운행만, 그 크루원만 센다
+    val carpools = records.filter { record ->
+        YearMonth.from(record.date) == month && record.passengerNames.isNotEmpty() &&
+            (roster.isEmpty() || record.passengerNames.any { it in roster })
+    }
+    val names = roster.ifEmpty { carpools.flatMap { it.passengerNames }.distinct() }
     if (names.isEmpty()) return null
     val members = names.map { name ->
         val rides = carpools.filter { name in it.passengerNames }

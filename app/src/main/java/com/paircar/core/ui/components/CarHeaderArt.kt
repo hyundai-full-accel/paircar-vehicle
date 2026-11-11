@@ -10,6 +10,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.res.imageResource
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import com.paircar.R
 import kotlin.math.max
@@ -42,3 +43,33 @@ fun CarHeaderArt(modifier: Modifier) {
 }
 
 private val CarAlignment = BiasAlignment(horizontalBias = 1f, verticalBias = 0.45f)
+
+/**
+ * 오늘의 카풀 카드 머리 배경 (시안): 그림을 카드 너비에 꽉 맞추고(왼쪽은 흰색으로 빠짐) 머리 영역 높이로 위아래를 자른다.
+ * 카드가 넓고 머리가 낮을수록 많이 잘리므로, 차가 머리 영역 높이의 [CarFocusY] 지점에 오도록 잘라 차가 늘 보이게 한다.
+ */
+@Composable
+fun CarHeaderBackdrop(modifier: Modifier) {
+    val bitmap = ImageBitmap.imageResource(R.drawable.bg_header_car)
+    Box(
+        modifier.drawBehind {
+            val scale = max(size.width / bitmap.width, size.height / bitmap.height)
+            val drawnW = bitmap.width * scale
+            val drawnH = bitmap.height * scale
+            val y = (size.height * CarFocusY - drawnH * CarCenterInImage).coerceIn(size.height - drawnH, 0f)
+            clipRect {
+                drawImage(
+                    bitmap,
+                    dstOffset = IntOffset((size.width - drawnW).roundToInt(), y.roundToInt()),
+                    dstSize = IntSize(drawnW.roundToInt(), drawnH.roundToInt()),
+                )
+            }
+        },
+    )
+}
+
+/** bg_header_car 에서 차의 세로 중심 (그림 높이 비율) */
+private const val CarCenterInImage = 0.51f
+
+/** 머리 영역에서 차 중심을 둘 높이 (시안: 머리 영역의 약 60~70% 지점) */
+private const val CarFocusY = 0.62f

@@ -90,6 +90,8 @@ class ServerCarpoolRepository(
         sync.refreshCrew()
     }
 
+    override suspend fun pollCrew() = sync.pollCrew()
+
     override suspend fun updateTripStatus(status: CarpoolStatus) {
         val before = local.todayTrip.value?.status
         local.updateTripStatus(status)

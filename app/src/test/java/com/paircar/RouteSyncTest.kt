@@ -6,6 +6,7 @@ import com.paircar.domain.model.CarpoolStatus
 import com.paircar.domain.model.MatchStatus
 import com.paircar.domain.model.NaviCommandResult
 import com.paircar.domain.model.RouteRequest
+import com.paircar.domain.model.WaypointSlot
 import com.paircar.domain.repository.NaviRepository
 import com.paircar.domain.usecase.CarpoolRouteSync
 import com.paircar.vehicle.navi.MockNaviRepository
@@ -23,6 +24,9 @@ class RouteSyncTest {
     /** 내비에 보낸 경로 요청을 기록한다 */
     private class RecordingNavi(private val inner: NaviRepository) : NaviRepository by inner {
         val requests = mutableListOf<RouteRequest>()
+        val removed = mutableListOf<WaypointSlot>()
+        override fun removeWaypoint(slot: WaypointSlot): NaviCommandResult =
+            inner.removeWaypoint(slot).also { removed += slot }
         override fun requestRoute(request: RouteRequest): NaviCommandResult =
             inner.requestRoute(request).also { requests += request }
     }
@@ -51,8 +55,10 @@ class RouteSyncTest {
         carpool.updateBoardingStatus("p-1", BoardingStatus.NO_SHOW)
         val result = routeSync.sync(carpool.todayTrip.value!!)
 
+        // 경로를 다시 요청하지 않고(경로 선택 화면 없음) 첫 경유지만 지운다
         assertEquals(NaviCommandResult.Requested, result)
-        assertEquals(listOf("양재시민의숲역 1번 출구"), navi.lastWaypoints())
+        assertEquals(listOf(WaypointSlot.FIRST), navi.removed)
+        assertEquals(1, navi.requests.size)
     }
 
     @Test
@@ -75,7 +81,14 @@ class RouteSyncTest {
         carpool.updateBoardingStatus("p-1", BoardingStatus.BOARDED)
         routeSync.sync(carpool.todayTrip.value!!)
 
-        assertEquals(listOf("양재시민의숲역 1번 출구"), navi.lastWaypoints())
+        assertEquals(listOf(WaypointSlot.FIRST), navi.removed)
+        assertEquals(1, navi.requests.size)
+
+        // 두 번째 경유지도 빠지면 이번엔 첫 번째 칸이 된 그 경유지를 지운다
+        carpool.updateBoardingStatus("p-2", BoardingStatus.NO_SHOW)
+        routeSync.sync(carpool.todayTrip.value!!)
+        assertEquals(listOf(WaypointSlot.FIRST, WaypointSlot.FIRST), navi.removed)
+        assertEquals(1, navi.requests.size)
     }
 
     @Test

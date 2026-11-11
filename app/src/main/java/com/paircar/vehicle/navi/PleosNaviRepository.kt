@@ -283,6 +283,8 @@ class PleosNaviRepository(
         helper.addWaypoint(place.toRequestWaypointInfo(slot.toSdk()))
     }
 
+    override fun removeWaypoint(slot: WaypointSlot): NaviCommandResult = command { it.removeWaypoint(slot.toSdk()) }
+
     override fun cancelRoute(): NaviCommandResult = command { it.cancelRoute() }
 
     override fun refreshRouteState(): NaviCommandResult = command {

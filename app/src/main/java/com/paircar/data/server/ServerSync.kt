@@ -112,6 +112,31 @@ class ServerSync(
         }
     }
 
+    /** 마지막으로 받은 크루원 명단·오늘 출석 (GET members + attendance 응답). 같으면 크루를 다시 받지 않는다 */
+    @Volatile
+    private var rosterSignature: String? = null
+
+    /**
+     * 오늘의 카풀·내 크루 화면이 보이는 동안 자주 부른다: 크루원 명단과 오늘 출석만 받아 보고(요청 2번),
+     * 새 크루원이 들어왔거나 동승자가 평소/오늘 탈 곳·참석을 바꿨으면 크루 전체를 다시 받는다
+     * (→ 출발 전 오늘 운행의 경유지·경로가 다시 만들어진다).
+     */
+    suspend fun pollCrew() {
+        val crewId = store.crewId ?: return
+        if (store.token == null) return
+        val signature = try {
+            rosterSignature(api.crewMembers(crewId), api.attendance(crewId, LocalDate.now(ServerTime.KST).toString()))
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            return
+        }
+        if (signature == rosterSignature) return
+        log("크루원·출석이 바뀌어 크루를 다시 받습니다")
+        refreshCrew()
+    }
+
+    private fun rosterSignature(members: JSONArray, attendance: JSONArray) = "$members|$attendance"
+
     /**
      * [크루 만들기]: 내 크루가 없으면 만들고, 출발지·도착지를 크루 장소로 등록해 일정을 저장한다.
      * 실패하면 예외 (화면에 알린다).
@@ -140,8 +165,10 @@ class ServerSync(
     private suspend fun loadCrew() {
         val crewId = store.crewId ?: return
         val crew = api.crew(crewId)
-        val members = api.crewMembers(crewId).objects()
-        val attendance = api.attendance(crewId, LocalDate.now(ServerTime.KST).toString()).objects()
+        val memberArray = api.crewMembers(crewId)
+        val members = memberArray.objects()
+        val attendanceArray = api.attendance(crewId, LocalDate.now(ServerTime.KST).toString())
+        val attendance = attendanceArray.objects()
         val me = store.memberId
         members.firstOrNull { it.getLong("memberId") == me }?.let { store.driverCrewMemberId = it.getLong("crewMemberId") }
 
@@ -160,6 +187,7 @@ class ServerSync(
         // 서버 장소를 기억해 두면 운행 시작·우회 거리 등록 때 같은 장소를 다시 등록하지 않는다
         store.placeIds = store.placeIds + places.associate { it.ref.key to it.placeId }
 
+        rosterSignature = rosterSignature(memberArray, attendanceArray)
         _crew.value = ServerCrew(
             crewId = crewId,
             name = crew.getString("name"),
@@ -438,6 +466,14 @@ class ServerSync(
                     attending = body.getBoolean("attending"),
                     pickup = place?.let { Place(it.name, "", GeoPoint(it.latitude, it.longitude)) },
                 )
+            }
+            // 초대로 새 크루원 참여 (차를 등록한 멤버에게만 온다)
+            "crew.member-joined" -> CrewLiveEvent.MemberJoined(name)
+            // 평소 탈 곳·내릴 곳·픽업 시각 변경 (차를 등록한 멤버에게만 온다)
+            "rider.usual-places-changed" -> {
+                val board = body.place("boardPlace")
+                listOfNotNull(board, body.place("alightPlace")).forEach { store.placeIds = store.placeIds + (it.ref.key to it.placeId) }
+                CrewLiveEvent.RiderUsualPlacesChanged(passengerId, name, board?.let { Place(it.name, "", GeoPoint(it.latitude, it.longitude)) })
             }
             "receipt.issued" -> CrewLiveEvent.ReceiptIssued
             "detour.confirm-requested" ->

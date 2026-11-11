@@ -40,7 +40,10 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.paircar.core.navigation.Screen
 import com.paircar.core.ui.components.BackIcon
@@ -165,6 +168,13 @@ fun PairCarRoot() {
                         )
                     }
                     val needsSetup = state.trip == null || setupState.createdCrew != null
+                    // 오늘의 카풀·내 크루 탭(크루 만들기 뒤 QR 화면 포함)이 보이는 동안 1초마다 크루원·오늘 출석을 확인한다
+                    if (shown == Screen.HOME || shown == Screen.CREW) {
+                        val lifecycle = LocalLifecycleOwner.current.lifecycle
+                        LaunchedEffect(lifecycle) {
+                            lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) { carpoolViewModel.watchCrew() }
+                        }
+                    }
                     when (shown) {
                         Screen.HOME -> if (startupDone && state.trip == null) {
                             // 크루가 없으면 안내만 두고, 크루 만들기는 내 크루 탭에서 한다

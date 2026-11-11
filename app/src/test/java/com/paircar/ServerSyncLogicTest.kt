@@ -151,6 +151,20 @@ class ServerSettlementTest {
         // 10월 기록은 11월 어림에 들어가지 않는다
         assertEquals(records.count { it.date.monthValue == 11 && it.passengerNames.isNotEmpty() }, estimate.carpoolDays)
     }
+
+    @Test
+    fun `기기에 남은 다른 크루의 운행 기록은 지금 크루 정산 어림에 섞이지 않는다`() {
+        val november = java.time.YearMonth.of(2026, 11)
+        val records = com.paircar.data.mock.MockTripHistory.records(until = LocalDate.of(2026, 11, 10))
+        // 예전 크루(시연 크루 등)에서 "수아"를 태운 기록
+        val other = records.first { it.date.monthValue == 11 && it.passengerNames.isNotEmpty() }.let { record ->
+            record.copy(id = "other", stops = record.stops.map { if (it.passengerName != null) it.copy(passengerName = "수아") else it })
+        }
+        val estimate = com.paircar.data.server.estimatedSettlement(november, "출근", "운전자", listOf("송연지"), records + other)!!
+        assertEquals(listOf("송연지"), estimate.members.map { it.name })
+        assertEquals(0, estimate.carpoolDays)
+        assertEquals(0.0, estimate.sharedKm, 0.0)
+    }
 }
 
 class SegmentBuilderTest {

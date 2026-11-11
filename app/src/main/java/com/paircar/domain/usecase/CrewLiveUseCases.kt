@@ -23,6 +23,8 @@ class ApplyCrewLiveEventUseCase(
     private val routeSync: CarpoolRouteSync,
     private val notify: (title: String, text: String) -> Unit,
     private val onReceiptIssued: suspend () -> Unit = {},
+    /** 크루 명단·평소 탈 곳이 바뀜: 서버 크루를 다시 받는다 (출발 전 오늘 운행 경유지가 다시 만들어진다) */
+    private val onCrewChanged: suspend () -> Unit = {},
 ) {
     suspend operator fun invoke(event: CrewLiveEvent) {
         when (event) {
@@ -70,6 +72,21 @@ class ApplyCrewLiveEventUseCase(
                     else -> "${event.name}님이 ${day} 타요"
                 }
                 notify(title, if (applies) "오늘 경유지에 반영했어요" else "출석이 바뀌었어요")
+            }
+
+            is CrewLiveEvent.MemberJoined -> {
+                onCrewChanged()
+                notify("${event.name}님이 크루에 들어왔어요", "크루 멤버에 추가했어요")
+            }
+
+            is CrewLiveEvent.RiderUsualPlacesChanged -> {
+                onCrewChanged()
+                // 운행 중에는 오늘 경로를 바꾸지 않는다 (오늘만 바꾼 탈 곳은 rider.place-changed 로 따로 온다)
+                val scheduled = carpool.todayTrip.value?.status == CarpoolStatus.SCHEDULED
+                notify(
+                    event.boardPlace?.let { "${event.name}님이 평소 ${it.name}에서 타요" } ?: "${event.name}님이 평소 탈 곳을 바꿨어요",
+                    if (scheduled) "오늘 경유지에 반영했어요" else "다음 운행부터 반영돼요",
+                )
             }
 
             CrewLiveEvent.ReceiptIssued -> onReceiptIssued()

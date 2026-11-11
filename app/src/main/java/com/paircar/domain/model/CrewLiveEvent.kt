@@ -36,6 +36,19 @@ sealed interface CrewLiveEvent {
         val pickup: Place?,
     ) : Rider
 
+    /** 초대로 새 크루원이 들어옴 (차를 등록한 멤버만 받는다) → 크루 명단을 다시 받는다 */
+    data class MemberJoined(val name: String) : CrewLiveEvent
+
+    /**
+     * 동승자가 평소 탈 곳·내릴 곳·픽업 시각을 바꿈 (차를 등록한 멤버만 받는다) → 크루를 다시 받아
+     * 출발 전 오늘 운행의 경유지를 다시 만든다. [boardPlace] 는 바뀐 평소 탈 곳 (없으면 null).
+     */
+    data class RiderUsualPlacesChanged(
+        override val passengerId: String?,
+        override val name: String,
+        val boardPlace: Place?,
+    ) : Rider
+
     /** 월 영수증 발행 */
     data object ReceiptIssued : CrewLiveEvent
 

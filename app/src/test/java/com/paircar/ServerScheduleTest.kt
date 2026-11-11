@@ -131,6 +131,23 @@ class AttendanceChangedEventTest {
         )
         assertTrue(notices.size == 3)
     }
+
+    @Test
+    fun `새 크루원 참여·평소 탈 곳 변경은 크루를 다시 받고 알린다`() = runTest {
+        val carpool = MockCarpoolRepository(latencyMillis = 0, tripFactory = { TestTrips.commute(LocalDate.of(2026, 11, 2)) })
+        val navi = MockNaviRepository(backgroundScope, connectDelayMillis = 0).also { it.connect() }
+        runCurrent()
+        val notices = mutableListOf<String>()
+        var reloads = 0
+        val apply = ApplyCrewLiveEventUseCase(carpool, CarpoolRouteSync(navi), notify = { t, _ -> notices += t }, onCrewChanged = { reloads++ })
+
+        apply(CrewLiveEvent.MemberJoined("송연지"))
+        apply(CrewLiveEvent.RiderUsualPlacesChanged("p-1", "차수아", Place("대원천 빌라", "", GeoPoint(37.44, 127.13))))
+        apply(CrewLiveEvent.RiderUsualPlacesChanged("p-1", "차수아", null))
+
+        assertEquals(3, reloads)
+        assertEquals(listOf("송연지님이 크루에 들어왔어요", "차수아님이 평소 대원천 빌라에서 타요", "차수아님이 평소 탈 곳을 바꿨어요"), notices)
+    }
 }
 
 class PrepareNextTripTest {

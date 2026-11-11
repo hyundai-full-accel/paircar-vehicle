@@ -113,6 +113,17 @@ class MockNaviRepository(
         return NaviCommandResult.Requested
     }
 
+    override fun removeWaypoint(slot: WaypointSlot): NaviCommandResult {
+        if (!isConnected) return notConnected()
+        if (slot.ordinal >= remainingWaypoints.size) {
+            return NaviCommandResult.Rejected(NaviError.ROUTE_SEARCH_FAILED, "그 경유지가 없습니다")
+        }
+        val removed = remainingWaypoints.removeAt(slot.ordinal)
+        publishProgress()
+        _events.tryEmit(NaviEvent.Info("[Mock] 경유지 삭제: ${removed.first}"))
+        return NaviCommandResult.Requested
+    }
+
     override fun cancelRoute(): NaviCommandResult {
         if (!isConnected) return notConnected()
         simulationJob?.cancel()

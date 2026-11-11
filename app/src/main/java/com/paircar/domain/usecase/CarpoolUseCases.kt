@@ -8,6 +8,7 @@ import com.paircar.domain.model.NaviEvent
 import com.paircar.domain.model.Passenger
 import com.paircar.domain.model.Place
 import com.paircar.domain.model.RouteRequest
+import com.paircar.domain.model.WaypointSlot
 import com.paircar.domain.repository.CarpoolRepository
 import com.paircar.domain.repository.NaviRepository
 
@@ -38,11 +39,11 @@ fun remainingWaypoints(trip: CarpoolTrip): List<Place> =
         .map { it.pickup }
 
 /**
- * 내비 경유지를 남은 픽업에 맞춘다 (NaviHelper requestRouteWithWaypoints).
- * - 미탑승, 또는 내비가 도착하기 전에 탑승 완료 → 그 경유지를 빼고 경로를 다시 요청
- * - 경유지 2곳 제한으로 미뤄둔 동승자 → 앞 경유지를 지나면 넣어서 다시 요청
- * 내비가 이미 도착한 경유지는 내비가 알아서 넘기므로, 남은 경유지가 같으면 다시 요청하지 않는다
- * (다시 요청하면 내비에 경로 선택 화면이 또 뜬다).
+ * 내비 경유지를 남은 픽업에 맞춘다.
+ * - 미탑승·불참, 또는 내비가 도착하기 전에 탑승 완료 → 그 경유지만 뺀다 (removeWaypoint).
+ *   경로를 다시 요청하지 않으므로 내비에 경로 선택 화면·카운트다운이 다시 뜨지 않는다.
+ * - 경유지 2곳 제한으로 미뤄둔 동승자, 탈 지점 변경처럼 새 경유지가 생기면 → 경로를 다시 요청
+ * 내비가 이미 도착한 경유지는 내비가 알아서 넘기므로, 남은 경유지가 같으면 아무것도 하지 않는다.
  */
 class CarpoolRouteSync(private val naviRepository: NaviRepository) {
 
@@ -60,10 +61,22 @@ class CarpoolRouteSync(private val naviRepository: NaviRepository) {
         naviWaypoints = naviWaypoints?.drop(1)
     }
 
-    /** 남은 경유지가 바뀌었을 때만 다시 요청한다. 요청하지 않았으면 null */
+    /** 남은 경유지가 바뀌었을 때만 내비에 반영한다. 아무것도 안 했으면 null */
     fun sync(trip: CarpoolTrip): NaviCommandResult? {
         if (trip.status != CarpoolStatus.IN_PROGRESS) return null
-        if (remainingWaypoints(trip) == naviWaypoints) return null
+        val target = remainingWaypoints(trip)
+        val current = naviWaypoints
+        if (target == current) return null
+        // 빠지기만 했으면(순서 그대로) 그 경유지만 지운다. 뒤에서부터 지워야 앞 번호가 밀리지 않는다
+        if (current != null && current.size > target.size && current.filter { it in target } == target) {
+            val removed = current.indices.filter { current[it] !in target }.sortedDescending()
+            for (index in removed) {
+                val result = naviRepository.removeWaypoint(WaypointSlot.entries[index])
+                if (result is NaviCommandResult.Rejected) return request(trip)
+            }
+            naviWaypoints = target
+            return NaviCommandResult.Requested
+        }
         return request(trip)
     }
 }
