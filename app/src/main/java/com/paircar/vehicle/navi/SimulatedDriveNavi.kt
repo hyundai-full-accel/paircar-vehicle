@@ -87,6 +87,15 @@ class SimulatedDriveNavi(
         return result
     }
 
+    /**
+     * 시연용: 운행 전 차 위치를 정한다. 에뮬레이터 내비는 위치가 한곳에 고정이라
+     * `adb shell am broadcast -a com.paircar.debug.PLACE_CAR --ef lat .. --ef lng ..` 로 옮긴다.
+     * 주행을 시작하면 이 위치에서 출발한다.
+     */
+    fun placeCar(point: GeoPoint) {
+        if (job?.isActive != true) simLocation.value = point
+    }
+
     override fun removeWaypoint(slot: WaypointSlot): NaviCommandResult {
         synchronized(waypoints) { if (slot.ordinal < waypoints.size) waypoints.removeAt(slot.ordinal) }
         return inner.removeWaypoint(slot)

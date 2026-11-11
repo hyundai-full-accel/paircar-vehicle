@@ -1,6 +1,12 @@
 package com.paircar
 
 import android.app.Application
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import androidx.core.content.ContextCompat
+import com.paircar.core.model.GeoPoint
 import com.paircar.core.common.AppContainer
 import com.paircar.domain.model.BoardingStatus
 import com.paircar.domain.model.CarpoolStatus
@@ -17,6 +23,7 @@ class PairCarApplication : Application() {
         super.onCreate()
         container = AppContainer(this)
         observeNaviEvents()
+        listenPlaceCar()
         // 서버 준비(멤버·크루 등)와 지난번에 못 보낸 운행 기록 보내기
         container.serverSync?.start()
         // 동승자 알림(SSE) 받기, 운행 중 위치 보내기, 우회 거리 등록
@@ -54,7 +61,21 @@ class PairCarApplication : Application() {
         }
     }
 
+    /** 시연용(디버그 주행 시뮬레이션): adb 브로드캐스트로 운행 전 차 위치를 옮긴다 ([SimulatedDriveNavi.placeCar]) */
+    private fun listenPlaceCar() {
+        val sim = container.simulatedDrive ?: return
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) {
+                val lat = intent.getDoubleExtra("lat", intent.getFloatExtra("lat", Float.NaN).toDouble())
+                val lng = intent.getDoubleExtra("lng", intent.getFloatExtra("lng", Float.NaN).toDouble())
+                if (!lat.isNaN() && !lng.isNaN()) sim.placeCar(GeoPoint(lat, lng))
+            }
+        }
+        ContextCompat.registerReceiver(this, receiver, IntentFilter(ACTION_PLACE_CAR), ContextCompat.RECEIVER_EXPORTED)
+    }
+
     private companion object {
         const val BOARDING_DELAY_MILLIS = 4_000L
+        const val ACTION_PLACE_CAR = "com.paircar.debug.PLACE_CAR"
     }
 }

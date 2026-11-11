@@ -467,6 +467,14 @@ class ServerSync(
                     pickup = place?.let { Place(it.name, "", GeoPoint(it.latitude, it.longitude)) },
                 )
             }
+            // 초대로 새 크루원 참여 (차를 등록한 멤버에게만 온다)
+            "crew.member-joined" -> CrewLiveEvent.MemberJoined(name)
+            // 평소 탈 곳·내릴 곳·픽업 시각 변경 (차를 등록한 멤버에게만 온다)
+            "rider.usual-places-changed" -> {
+                val board = body.place("boardPlace")
+                listOfNotNull(board, body.place("alightPlace")).forEach { store.placeIds = store.placeIds + (it.ref.key to it.placeId) }
+                CrewLiveEvent.RiderUsualPlacesChanged(passengerId, name, board?.let { Place(it.name, "", GeoPoint(it.latitude, it.longitude)) })
+            }
             "receipt.issued" -> CrewLiveEvent.ReceiptIssued
             "detour.confirm-requested" ->
                 CrewLiveEvent.DetourConfirmRequested(body.getLong("detourId"), body.optString("placeName"), body.getDouble("detourKm"))

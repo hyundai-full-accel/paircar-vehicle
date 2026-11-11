@@ -182,6 +182,7 @@ class AppContainer(context: Context) {
                     speaker.speak(title)
                 },
                 onReceiptIssued = { settlementRepository.refresh() },
+                onCrewChanged = { sync.refreshCrew() },
             ),
             scope = applicationScope,
             log = { Log.i("PairCarServer", it) },
