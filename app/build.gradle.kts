@@ -1,7 +1,15 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
 }
+
+// release 서명 정보는 git 에 올라가지 않는 local.properties 에서 읽는다 (paircar.release.*). 없으면 서명 없이 빌드된다
+val localProps = Properties().apply {
+    rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
+}
+val releaseStoreFile = localProps.getProperty("paircar.release.storeFile")
 
 android {
     namespace = "com.paircar"
@@ -27,6 +35,11 @@ android {
     // CarUxRestrictions(주행 규제 상태) 조회용 AAOS Car API. 런타임에는 차량 시스템이 제공한다.
     useLibrary("android.car")
 
+    // 네이티브 라이브러리(지도 엔진 등)를 압축해 넣어 APK 파일을 작게 한다 (설치 때 기기에 풀린다)
+    packaging {
+        jniLibs { useLegacyPackaging = true }
+    }
+
     buildFeatures {
         compose = true
         buildConfig = true
@@ -35,6 +48,17 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    signingConfigs {
+        if (releaseStoreFile != null) {
+            create("release") {
+                storeFile = file(releaseStoreFile)
+                storePassword = localProps.getProperty("paircar.release.storePassword")
+                keyAlias = localProps.getProperty("paircar.release.keyAlias")
+                keyPassword = localProps.getProperty("paircar.release.keyPassword")
+            }
+        }
     }
 
     buildTypes {
@@ -47,7 +71,13 @@ android {
             buildConfigField("boolean", "SIMULATE_DRIVE", "true")
         }
         release {
-            isMinifyEnabled = false
+            // 코드·리소스 축소 (Pleos SDK 는 proguard-rules.pro 에서 그대로 둔다)
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            // 차량(arm64-v8a)과 Pleos Connect 에뮬레이터(x86_64)용 네이티브 라이브러리만 넣는다
+            ndk { abiFilters += setOf("arm64-v8a", "x86_64") }
+            signingConfigs.findByName("release")?.let { signingConfig = it }
             // 배포 서버 주소가 정해지기 전까지 서버 없이 Mock 만 쓴다
             buildConfigField("String", "API_BASE_URL", "\"\"")
             buildConfigField("boolean", "SEED_SERVER_PASSENGERS", "false")

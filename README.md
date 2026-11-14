@@ -1,11 +1,53 @@
 # 페어카 (PairCar)
 
-출퇴근 경로 기반 **카풀 매칭 차량용 앱**. 현대자동차그룹 차량용 앱 개발 공모전 출품작으로,
-**Pleos Connect (Android Automotive OS)** 인포테인먼트에서 직접 실행된다. Android Auto 프로젝션 앱이 아니다.
+> **운전자는 조작과 기름값 이야기에서, 동승자는 기다림과 미안함에서 벗어나는 Pleos Connect 차량 연동 출퇴근 카풀 앱**
 
-- 운전자는 오늘의 카풀 일정·동승자·픽업 지점을 확인하고, **한 번의 탭으로 차량 내비게이션에 픽업 지점(경유지)과 목적지를 설정**한다.
-- 주행 중에는 **CarUxRestrictions** 에 따라 간소화된 주행 화면만 보여준다.
-- 내비게이션과 **나란히(분할 화면)** 표시되도록 portrait/landscape 적응형 레이아웃을 쓴다.
+현대자동차그룹 차량용 앱 개발 공모전 출품작 (팀 풀악셀). **Pleos Connect (Android Automotive OS)** 인포테인먼트에서 직접 실행되는 운전자용 차량 앱이며, 동승자는 앱 설치 없이 QR 링크로 여는 모바일 웹을 쓴다.
+
+- **크루**: 차량 화면에서 크루 이름·출발 시각·반복 요일·출발지/도착지(지도)를 정하면 동승자 초대 QR 이 만들어진다.
+- **픽업**: 오늘의 카풀에 경유지별 픽업 예정 시각과 경로가 자동으로 만들어지고, 주행 시작 한 번(5초 카운트다운 자동 출발)으로 승차 지점이 경유지로 담긴 경로가 Pleos 내비게이션에 전달된다.
+- **탑승**: 동승자가 타면 그 경유지만 내비게이션에서 지우고(`removeWaypoint`) "○○님 탑승했어요" 음성(TTS)으로 알린다.
+- **정산**: 실제로 함께 탄 구간만 탄 사람 수로 나누는 실비 정산(전비 × 충전 단가, 통행료, 우회 거리, 100원 올림). 매달 1일 지난달 영수증이 발행된다.
+- 주행 중에는 **CarUxRestrictions** 에 따라 간소화된 화면만 보여주고, 내비게이션과 **나란히(분할 화면)** 쓸 수 있다.
+
+## 공모전 제출 정보
+
+| 항목 | 내용 |
+|---|---|
+| 앱 이름 | 페어카 (PairCar) · 패키지 `com.paircar` · 버전 0.1.0 |
+| 한 줄 소개 | 운전자는 조작과 기름값 이야기에서, 동승자는 기다림과 미안함에서 벗어나는 Pleos Connect 차량 연동 출퇴근 카풀 앱 |
+| APK | [`apk/풀악셀_페어카_release.apk`](apk/) (release, 서명됨, 약 23MB) |
+| 에뮬레이터 | **Pleos Connect v2.1.0 APIs** (Android 14 / API 34, `system-images;android-34;pleos_car_emulator;x86_64`, 기기 프로필 `Pleos_Connect_v2_0`) |
+| 화면 규격 | **2560 × 1440 px, 160 dpi (mdpi)**, 가로. 앱 영역은 왼쪽 차량 패널을 뺀 오른쪽(약 1707 × 1210 dp)이며, 내비와 나란히 띄운 좁은 창(약 830 dp)도 지원 |
+| 지원 ABI | `x86_64`(에뮬레이터), `arm64-v8a`(차량) |
+| 시연 영상 | 크루 만들기 → QR 초대 → 동승자 2명 모바일 웹 참여 → 주행·자동 탑승 → 운행 기록·정산 (별도 제출) |
+
+### 실행 방법 (release APK)
+
+1. 아래 [Pleos Connect Emulator 설정](#pleos-connect-emulator-설정)대로 **Pleos Connect v2.1.0** 에뮬레이터를 콜드 부팅한다.
+2. APK 를 설치한다.
+   ```bash
+   adb install -r "apk/풀악셀_페어카_release.apk"
+   ```
+3. 에뮬레이터 하단 독(dock)의 **페어카(P) 아이콘**을 누르거나 명령줄로 실행한다. Pleos Connect 는 사용자 10 에서 앱이 실행된다.
+   ```bash
+   adb shell am start --user 10 -n com.paircar/.MainActivity
+   ```
+4. (선택) 동승자 알림·음성 안내 알림을 보려면 알림 권한을 허용한다.
+   ```bash
+   adb shell pm grant --user 10 com.paircar android.permission.POST_NOTIFICATIONS
+   ```
+
+> 디버그 빌드를 설치한 적이 있으면 서명 키가 달라 덮어쓰기가 안 된다. 먼저 `adb uninstall com.paircar` 로 지운다.
+
+### 테스트 환경 및 필요한 설정
+
+- **release APK 는 서버 없이 동작한다.** 앱에 들어 있는 예시 크루(판교 출근 크루 · 동승자 2명)와 지난 운행·정산 예시 데이터로 모든 화면을 확인할 수 있다. 네트워크는 지도 타일(OpenFreeMap)·경로 미리보기(OSRM)에만 쓴다.
+- 실행하면 시작 화면에서 차량 연결을 확인한 뒤 오늘의 카풀로 이동하고, **5초 카운트다운 뒤 자동으로 주행을 시작**한다(화면을 누르면 취소). 주행을 시작하면 Pleos 내비에 경유지가 담긴 경로가 전달된다.
+- 에뮬레이터에서는 차가 움직이지 않으므로 경유지 도착·탑승은 주행 화면의 **탑승 완료 / 미탑승** 버튼으로 진행한다.
+- 주행 중 화면 제한은 Pleos Virtual Console 에서 기어를 **D** 로 바꿔 확인한다 ([주행 상태 테스트](#주행-상태-테스트)).
+- 내비와 나란히 보기: 앱 영역 오른쪽 끝 `⋮` 막대를 왼쪽으로 끈다 ([분할 화면 테스트](#분할-화면-테스트)).
+- 서버 연동(크루 만들기·QR 초대·동승자 웹·실시간 알림·주행 시뮬레이션)은 **debug 빌드 + 로컬 크루 서버**에서 동작한다. 아래 [서버 연동 (debug)](#서버-연동-debug) 참고.
 
 > 화면 시안 PDF (에뮬레이터 캡처): [docs/PairCar_Split_Screen_Mockup.pdf](docs/PairCar_Split_Screen_Mockup.pdf)
 > 화면 구현 가능성 검증 결과: [docs/PLEOS_FEASIBILITY.md](docs/PLEOS_FEASIBILITY.md)
@@ -21,7 +63,8 @@
 | 비동기 | Kotlin Coroutines + StateFlow / SharedFlow |
 | 빌드 | Gradle 9.4.1 (Kotlin DSL, version catalog), AGP 9.2.0 |
 | SDK | minSdk 28 / targetSdk 34 / compileSdk 37 |
-| 차량 SDK | Pleos `ai.pleos.playground:NaviHelper:3.0.5`, Pleos `ai.pleos.playground:Vehicle:2.3.2` (정산 전비·주행거리), AAOS `android.car` (CarUxRestrictions) |
+| 차량 SDK | Pleos `ai.pleos.playground:NaviHelper:3.0.5`, Pleos `ai.pleos.playground:Vehicle:2.3.2` (정산 전비·주행거리), Pleos `TextToSpeech:3.3.1` (온디바이스 한국어 음성 안내), AAOS `android.car` (CarUxRestrictions) |
+| 서버 연동 | 크루 서버 REST + 실시간 이벤트(SSE), 끊겨도 순서대로 다시 보내는 전송 대기열 (`data/server`) |
 | 지도 | MapLibre `org.maplibre.gl:android-sdk:13.6.1` + OpenFreeMap Positron 타일 (API 키·Google Play 서비스 불필요) |
 | 경로 미리보기 | OSRM 공개 데모 서버 (프로토타입 전용, 실패 시 직선) — 서비스 전 상용 길찾기 API로 교체 |
 | 폰트 | Pretendard 1.3.9 (`res/font`, SIL OFL 1.1 — [docs/licenses/Pretendard-OFL.txt](docs/licenses/Pretendard-OFL.txt)) |
@@ -44,8 +87,9 @@ app/src/main/java/com/paircar/
 │   └── ui/                    # 테마(Pretendard, 큰 글자), 시안 공용 컴포넌트, 지도, QR
 ├── data/
 │   ├── local/                 # 운행 기록 JSON 저장, 진행 중 운행 상태 저장(창을 닫아도 이어지게)
-│   ├── mock/                  # MockCarpoolData, MockCarpoolRepository, 지난 운행·정산 Mock
-│   └── remote/                # REST API 연동 지점(인터페이스만)
+│   ├── mock/                  # 서버 없는 release 용 예시 데이터 (크루·지난 운행·정산)
+│   ├── remote/                # 경로 미리보기(OSRM) + 캐시
+│   └── server/                # 크루 서버 API·SSE 실시간 알림·운행 기록 전송 대기열·월 영수증
 ├── domain/
 │   ├── model/                 # Carpool, Navigation, DrivingState + DrivingPolicy
 │   ├── repository/            # CarpoolRepository, NaviRepository, DrivingStateRepository
@@ -53,21 +97,23 @@ app/src/main/java/com/paircar/
 ├── feature/
 │   ├── startup/               # 시작 화면: 차량 연결·변경사항·경유지·지원 기능 확인 후 오늘의 카풀로
 │   ├── home/                  # 탭 1. 오늘의 카풀 (V-02)
-│   ├── crew/                  # 탭 2. 내 크루 + 경로 상세 + QR 초대
+│   ├── crewsetup/             # 크루 만들기 (이름·시각·요일·지도에서 출발지/도착지) → 초대 QR
+│   ├── crew/                  # 탭 2. 내 크루 + 경로 상세 + QR 초대 + 탑승·픽업 관리 + 정산 기준 관리
 │   ├── history/               # 탭 3. 운행 기록: 월 요약, 주간·하루 타임라인, 운행 상세
 │   ├── carpool/               # 홈·주행·운행 종료가 함께 쓰는 CarpoolViewModel
-│   ├── settlement/            # 탭 4. 월별 정산: 멤버별 정산, 영수증 (Mock 내역 + 차량 전비)
+│   ├── settlement/            # 탭 4. 월별 정산: 멤버별 정산, 분담 내역, 영수증, 정산 진행, 계좌·비용 기준(은행 선택)
 │   ├── matching/              # 새 동승 요청 수락/거절 (정차 중 전용)
 │   ├── driving/               # 주행 중 화면 (V-06), 3분할 좁은 창용 주행 패널, 운행 종료 화면
 │   ├── settings/              # 설정 + 연결된 차량(내비 연결 재확인/해제)
 │   └── navipoc/               # NaviHelper API 검증용 개발 화면 (설정 > 지원 기능 확인)
 └── vehicle/
-    ├── navi/                  # PleosNaviRepository(SDK), MockNaviRepository, Factory
+    ├── navi/                  # PleosNaviRepository(SDK), MockNaviRepository, SimulatedDriveNavi(시연용 주행 시뮬레이션)
     ├── energy/                # PleosVehicleEnergyRepository (Vehicle SDK 전비·주행거리)
+    ├── tts/                   # Pleos TextToSpeech 음성 안내 (없으면 안드로이드 기본 TTS)
     └── state/                 # CarDrivingStateRepository (CarUxRestrictionsManager)
 ```
 
-UI·도메인 코드는 Pleos SDK 타입을 직접 참조하지 않는다. SDK 의존은 `vehicle/navi/PleosNaviRepository.kt`, `vehicle/energy/PleosVehicleEnergyRepository.kt` 두 파일에만 있다.
+UI·도메인 코드는 Pleos SDK 타입을 직접 참조하지 않는다. SDK 의존은 `vehicle/` 아래 구현에만 있다.
 
 ## 협업 흐름 (GitHub)
 
@@ -80,9 +126,41 @@ UI·도메인 코드는 Pleos SDK 타입을 직접 참조하지 않는다. SDK �
 
 ## 크루 초대 (QR)
 
-내 크루 → **QR로 초대하기** 또는 크루 이름 옆 **+** → QR 표시. QR 에는 모바일웹 가입 주소(`INVITE_BASE_URL?code=초대코드`)가 들어간다.
-초대 코드 발급·검증 서버와 모바일웹은 아직 없어서, 지금은 Mock 이 6자리 코드(24시간)를 만들고 주소는 예약 도메인 `https://paircar.example/join` 자리표시자다.
-서버가 생기면 `app/build.gradle.kts` 의 `INVITE_BASE_URL` 과 `CarpoolRemoteDataSource.createCrewInvite()` 구현만 바꾸면 된다.
+내 크루 → **QR로 초대하기** 또는 크루 이름 옆 **+** → QR 표시.
+
+- **debug + 서버**: 크루 서버가 초대 코드를 발급하고, QR 에는 서버가 정한 동승자 웹 주소(`PAIRCAR_INVITE_BASE_URL/코드`)가 들어간다. 동승자는 웹에서 이름·탈 곳을 등록하고 정산 기준에 동의해 참여한다.
+- **release (서버 없음)**: 앱이 예시 초대 코드를 만들고, 주소는 예약 도메인 `https://paircar.example/join` 자리표시자다.
+
+## 서버 연동 (debug)
+
+debug 빌드는 개발 PC 의 크루 서버(`http://10.0.2.2` = PC 의 localhost)에 붙는다. 함께 쓰는 저장소:
+
+- 크루 서버: <https://github.com/hyundai-full-accel/paircar-server> (`docker compose -f infra/compose.yaml up -d --build --wait`)
+- 동승자 모바일 웹: <https://github.com/hyundai-full-accel/paircar-mobile>
+
+| BuildConfig | debug | release |
+|---|---|---|
+| `API_BASE_URL` | `http://10.0.2.2` | `""` (서버 없이 예시 데이터) |
+| `SIMULATE_DRIVE` | `true` (주행 시작 시 경로를 따라 차가 움직이는 것처럼 시뮬레이션) | `false` |
+| `SEED_SERVER_PASSENGERS` | `false` | `false` |
+
+서버 연동 테스트: `./gradlew :app:testDebugUnitTest -PpaircarServer=http://localhost` (로컬 DB 에 테스트 크루가 생긴다)
+
+## release 빌드
+
+```bash
+./gradlew :app:assembleRelease
+```
+
+- 결과: `app/build/outputs/apk/release/app-release.apk`
+- 코드·리소스 축소(R8, `app/proguard-rules.pro` — Pleos SDK 는 이름을 그대로 둔다), ABI `arm64-v8a`·`x86_64` 만 포함
+- 서명 정보는 git 에 올리지 않는 `local.properties` 에서 읽는다. 없으면 서명 없이 빌드된다.
+  ```properties
+  paircar.release.storeFile=키스토어 경로
+  paircar.release.storePassword=…
+  paircar.release.keyAlias=paircar
+  paircar.release.keyPassword=…
+  ```
 
 ## 개발 환경 구축
 
@@ -112,7 +190,7 @@ UI·도메인 코드는 Pleos SDK 타입을 직접 참조하지 않는다. SDK �
 ./gradlew assembleDebug testDebugUnitTest
 ```
 
-APK: `app/build/outputs/apk/debug/app-debug.apk`
+APK: `app/build/outputs/apk/debug/app-debug.apk` (제출용 release 는 [release 빌드](#release-빌드) 참고)
 
 ## Pleos Connect Emulator 설정
 
@@ -145,7 +223,7 @@ avdmanager create avd -n Pleos_Connect_v2_1 -k "system-images;android-34;pleos_c
   adb install -r app/build/outputs/apk/debug/app-debug.apk
   ```
   ```bash
-  adb shell am start -n com.paircar/.MainActivity
+  adb shell am start --user 10 -n com.paircar/.MainActivity
   ```
 
 ### 내비 연동 구현 선택 (`app/build.gradle.kts`)
@@ -204,14 +282,12 @@ implementation("ai.pleos.playground:NaviHelper:3.0.5")
 | 내비 화면 | `requestNavigationScreen(NavigationScreenRequest.Foreground / OverviewRoute)` | `showNavigationScreen()` |
 | 해제 | `removeListener()` → `release()` (재사용 시 새 객체) | `disconnect()` ← `MainActivity.onDestroy()` |
 
-## 이번 MVP에서 제외한 기능 (추후 확장)
+## 추후 확장
 
 | 기능 | 비고 |
 |---|---|
-| 주행 중 음성 명령 | Pleos SpeechToText SDK (`준비 중`, 신청 필요) |
-| TTS 안내 | Pleos TextToSpeech SDK. 픽업 도착 음성 안내 후보 |
-| 월별 정산 내역 / 운행별 정산 | 서버 API 확정 후 (지금 탭은 빈 내역 + 정산 기준만) |
-| QR 초대 서버·모바일웹 | 초대 코드 발급·검증 서버 구축 필요 (회의 2.4) |
-| 실제 결제 처리 | 차량 내 결제 정책 확인 필요 |
-| iOS 앱 (동승자용) | 별도 프로젝트 |
-| 서버 REST 연동 | `data/remote/CarpoolRemoteDataSource` 구현 후 `AppContainer` 에서 교체 |
+| 실차 탑승 자동 감지 | Vehicle SDK Seat·Door 신호 상태 머신 (지금은 주행 화면의 탑승 완료/미탑승 버튼, 시연은 시뮬레이션) |
+| 주행 중 음성 명령 | Pleos SpeechToText · Gleo App Schema |
+| 교대 운전 상계, "이번 달은 내가 낼게" 0원 영수증 | 정산 서버와 함께 |
+| 실제 결제 처리 | 차량 내 결제 정책 확인 필요 (지금은 금액·계좌 안내 후 은행 앱 송금) |
+| 경유지 삭제 시 내비 경로 확인 화면 | 남은 경유지가 있으면 Pleos 내비가 경로를 다시 계산하며 확인 화면(자동 진행)을 띄운다. SDK 에 끄는 옵션이 없어 Pleos 문의 예정 |
